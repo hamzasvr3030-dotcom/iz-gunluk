@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- İ harfinin noktası -->
+    <path android:fillColor="#FF2F7BFF" android:pathData="M48,32a6,6 0,1 1,12 0a6,6 0,1 1,-12 0z" />
+    <!-- gövde: kalem izi gibi kıvrılan çizgi -->
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="7" android:strokeLineCap="round"
+        android:pathData="M54,46 L54,68 Q54,77 63,77 L70,77" />
+    <path android:strokeColor="#992F7BFF" android:strokeWidth="3.5" android:strokeLineCap="round"
+        android:pathData="M36,77 L43,77" />
+</vector>
