@@ -38,6 +38,9 @@ object Palette {
         val a = accents.getOrElse(accentIdx) { accents[0] }.second
         val t = if (theme == "system") (if (sysDark) "dark" else "light") else theme
         return when (t) {
+            "paper" -> IzColors(false, Color(0xFFF3ECDD), Color(0xFFFBF6EA), Color(0xFFEDE3CF), Color(0x1F5A4630),
+                Color(0xFF2E2620), Color(0xFF6E5F4E), Color(0xFFA6957F), a, a.copy(alpha = 0.12f), Color.White,
+                Color(0xFFFFE08A), Color(0xFFC6423C))
             "light" -> IzColors(false, Color(0xFFF4F6FB), Color.White, Color(0xFFEDF1F8), Color(0x14101828),
                 Color(0xFF101828), Color(0xFF5B6478), Color(0xFF98A2B3), a, a.copy(alpha = 0.12f), Color.White,
                 Color(0xFFFFE58F), Color(0xFFE5484D))
@@ -56,6 +59,21 @@ object Palette {
         "round" -> FontFamily.Cursive
         else -> FontFamily.SansSerif
     }
+}
+
+/** Günlük kapakları: ana sayfa başlığı, kilit ekranı ve PDF kapağında kullanılır. */
+object Covers {
+    val all = listOf(
+        "Gece" to listOf(Color(0xFF1B2A4E), Color(0xFF2F7BFF)),
+        "Gün batımı" to listOf(Color(0xFFFF7A59), Color(0xFFC2378F)),
+        "Orman" to listOf(Color(0xFF1E5631), Color(0xFF13C2C2)),
+        "Lavanta" to listOf(Color(0xFF5B3FA8), Color(0xFFC09BFF)),
+        "Deniz" to listOf(Color(0xFF064E7A), Color(0xFF4FC3F7)),
+        "Kum" to listOf(Color(0xFFB08D57), Color(0xFFEBD9B4)),
+        "Gül" to listOf(Color(0xFF8E2450), Color(0xFFFF8FAB)),
+        "Mürekkep" to listOf(Color(0xFF111111), Color(0xFF4A4A55)),
+    )
+    fun colors(i: Int) = all.getOrElse(i) { all[0] }.second
 }
 
 val LocalIz = staticCompositionLocalOf { Palette.colors("dark", true, 0) }

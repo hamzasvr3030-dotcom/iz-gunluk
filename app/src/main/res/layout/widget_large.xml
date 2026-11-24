@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/w_root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="@drawable/widget_bg" android:orientation="vertical" android:padding="16dp">
+
+    <TextView android:id="@+id/w_date" android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:textColor="#FF2F7BFF" android:textSize="11sp" android:textStyle="bold" android:letterSpacing="0.08" android:text="BUGÜN" />
+    <TextView android:id="@+id/w_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp"
+        android:maxLines="1" android:ellipsize="end" android:textColor="#FFFFFFFF" android:textSize="19sp" android:textStyle="bold" android:text="Bugün nasıl geçti?" />
+    <TextView android:id="@+id/w_sub" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:maxLines="1" android:ellipsize="end" android:textColor="#B3FFFFFF" android:textSize="12sp" android:text="" />
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+        android:gravity="center_vertical" android:orientation="horizontal">
+        <LinearLayout android:id="@+id/m_mutlu" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:gravity="center_horizontal" android:orientation="vertical" android:paddingTop="4dp" android:paddingBottom="4dp">
+            <ImageView android:id="@+id/mi_mutlu" android:layout_width="30dp" android:layout_height="30dp" android:src="@drawable/mood_mutlu" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="3dp"
+                android:textColor="#CCFFFFFF" android:textSize="10sp" android:maxLines="1" android:text="Mutlu" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/m_huzurlu" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:gravity="center_horizontal" android:orientation="vertical" android:paddingTop="4dp" android:paddingBottom="4dp">
+            <ImageView android:id="@+id/mi_huzurlu" android:layout_width="30dp" android:layout_height="30dp" android:src="@drawable/mood_huzurlu" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="3dp"
+                android:textColor="#CCFFFFFF" android:textSize="10sp" android:maxLines="1" android:text="Huzurlu" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/m_heyecanli" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:gravity="center_horizontal" android:orientation="vertical" android:paddingTop="4dp" android:paddingBottom="4dp">
+            <ImageView android:id="@+id/mi_heyecanli" android:layout_width="30dp" android:layout_height="30dp" android:src="@drawable/mood_heyecanli" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="3dp"
+                android:textColor="#CCFFFFFF" android:textSize="10sp" android:maxLines="1" android:text="Heyecan" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/m_yorgun" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:gravity="center_horizontal" android:orientation="vertical" android:paddingTop="4dp" android:paddingBottom="4dp">
+            <ImageView android:id="@+id/mi_yorgun" android:layout_width="30dp" android:layout_height="30dp" android:src="@drawable/mood_yorgun" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="3dp"
+                android:textColor="#CCFFFFFF" android:textSize="10sp" android:maxLines="1" android:text="Yorgun" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/m_uzgun" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:gravity="center_horizontal" android:orientation="vertical" android:paddingTop="4dp" android:paddingBottom="4dp">
+            <ImageView android:id="@+id/mi_uzgun" android:layout_width="30dp" android:layout_height="30dp" android:src="@drawable/mood_uzgun" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="3dp"
+                android:textColor="#CCFFFFFF" android:textSize="10sp" android:maxLines="1" android:text="Üzgün" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/m_ofkeli" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:gravity="center_horizontal" android:orientation="vertical" android:paddingTop="4dp" android:paddingBottom="4dp">
+            <ImageView android:id="@+id/mi_ofkeli" android:layout_width="30dp" android:layout_height="30dp" android:src="@drawable/mood_ofkeli" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="3dp"
+                android:textColor="#CCFFFFFF" android:textSize="10sp" android:maxLines="1" android:text="Öfkeli" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+        <TextView android:id="@+id/w_write" android:layout_width="0dp" android:layout_height="38dp" android:layout_weight="1"
+            android:background="@drawable/widget_btn" android:gravity="center" android:textColor="#FFFFFFFF" android:textSize="13sp"
+            android:textStyle="bold" android:text="+ Günlüğümü yaz" />
+        <TextView android:id="@+id/w_note" android:layout_width="wrap_content" android:layout_height="38dp" android:layout_marginStart="8dp"
+            android:background="@drawable/widget_btn2" android:gravity="center" android:paddingStart="16dp" android:paddingEnd="16dp"
+            android:textColor="#FFFFFFFF" android:textSize="13sp" android:textStyle="bold" android:text="Hızlı not" />
+    </LinearLayout>
+</LinearLayout>

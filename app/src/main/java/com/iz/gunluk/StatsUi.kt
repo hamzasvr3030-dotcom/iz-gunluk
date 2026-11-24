@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
@@ -123,6 +124,35 @@ fun StatsScreen() {
             @OptIn(ExperimentalLayoutApi::class)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 total.topTags.forEach { (t, n) -> Pill("#$t · $n") { Nav.listTag = t; Nav.tab = 1 } }
+            }
+        }
+
+        if (Habits.defs.isNotEmpty() && Habits.log.isNotEmpty()) {
+            SectionTitle("Alışkanlıklar · son 30 gün")
+            IzCard {
+                val today = LocalDate.now().toEpochDay()
+                Habits.defs.forEachIndexed { i, d ->
+                    if (i > 0) Spacer(Modifier.height(14.dp))
+                    val rate = Habits.rate(d, 30)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Habits.icon(d.icon), null, tint = c.accent, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
+                        Text(d.name, color = c.text, modifier = Modifier.weight(1f))
+                        val extra = if (d.kind != "check") {
+                            val vals = (0 until 30).map { Habits.value(today - it, d.key) }.filter { it > 0 }
+                            if (vals.isNotEmpty()) " · ort. ${fmtD(Math.round(vals.average() * 10) / 10.0)} ${d.unit}" else ""
+                        } else ""
+                        Text("%${(rate * 100).toInt()}$extra", color = c.sub, style = MaterialTheme.typography.labelLarge)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        for (k in 29 downTo 0) {
+                            val ok = Habits.done(d, Habits.value(today - k, d.key))
+                            Box(Modifier.weight(1f).height(14.dp).clip(RoundedCornerShape(3.dp)).background(if (ok) c.accent else c.line))
+                        }
+                    }
+                    val st = Habits.streak(d)
+                    if (st > 1) Text("$st gündür devam ediyor", color = c.faint, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 4.dp))
+                }
             }
         }
 

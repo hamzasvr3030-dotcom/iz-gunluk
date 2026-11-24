@@ -1,24 +1,49 @@
 package com.iz.gunluk
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Bedtime
-import androidx.compose.material.icons.rounded.Celebration
-import androidx.compose.material.icons.rounded.CenterFocusStrong
-import androidx.compose.material.icons.rounded.Cloud
-import androidx.compose.material.icons.rounded.LocalFireDepartment
-import androidx.compose.material.icons.rounded.QuestionMark
-import androidx.compose.material.icons.rounded.SelfImprovement
-import androidx.compose.material.icons.rounded.SentimentDissatisfied
-import androidx.compose.material.icons.rounded.SentimentVerySatisfied
-import androidx.compose.material.icons.rounded.Spa
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import java.time.LocalDate
 
-data class Mood(val key: String, val label: String, val color: Color, val icon: ImageVector, val score: Int)
+data class Mood(val key: String, val label: String, val color: Color, val icon: ImageVector, val score: Int, val custom: Boolean = false, val iconKey: String = "")
 
 object Moods {
-    val all = listOf(
+    /** Kullanıcının eklediği ruh hâllerinde seçilebilen simgeler. */
+    val iconPool: List<Pair<String, ImageVector>> = listOf(
+        "star" to Icons.Rounded.Star, "heart" to Icons.Rounded.Favorite, "bolt" to Icons.Rounded.Bolt,
+        "sun" to Icons.Rounded.WbSunny, "moon" to Icons.Rounded.DarkMode, "music" to Icons.Rounded.MusicNote,
+        "coffee" to Icons.Rounded.LocalCafe, "pets" to Icons.Rounded.Pets, "plane" to Icons.Rounded.Flight,
+        "book" to Icons.Rounded.MenuBook, "sport" to Icons.Rounded.FitnessCenter, "sick" to Icons.Rounded.Sick,
+        "psych" to Icons.Rounded.Psychology, "nature" to Icons.Rounded.Park, "water" to Icons.Rounded.WaterDrop,
+        "rain" to Icons.Rounded.Umbrella,
+    )
+    val colorPool = listOf(0xFFFF6B6B, 0xFFFFA94D, 0xFFFFD43B, 0xFF94D82D, 0xFF38D9A9, 0xFF3BC9DB, 0xFF4DABF7,
+        0xFF748FFC, 0xFF9775FA, 0xFFDA77F2, 0xFFF783AC, 0xFFADB5BD).map { Color(it) }
+
+    val custom = androidx.compose.runtime.mutableStateListOf<Mood>()
+    val all: List<Mood> get() = builtIn + custom
+    operator fun get(k: String?) = k?.let { key -> builtIn.firstOrNull { it.key == key } ?: custom.firstOrNull { it.key == key } }
+
+    fun customJson(): String = org.json.JSONArray(custom.map {
+        org.json.JSONObject().put("key", it.key).put("label", it.label).put("color", it.color.value.toLong().toString()).put("icon", it.iconKey).put("score", it.score)
+    }).toString()
+
+    fun loadCustom(s: String) {
+        custom.clear()
+        if (s.isBlank()) return
+        runCatching {
+            val a = org.json.JSONArray(s)
+            for (i in 0 until a.length()) {
+                val o = a.getJSONObject(i)
+                val ik = o.optString("icon")
+                custom += Mood(o.getString("key"), o.getString("label"), Color(o.getString("color").toULong()),
+                    iconPool.firstOrNull { it.first == ik }?.second ?: Icons.Rounded.Star, o.optInt("score", 3), true, ik)
+            }
+        }
+    }
+
+    val builtIn = listOf(
         Mood("mutlu", "Mutlu", Color(0xFFFFC53D), Icons.Rounded.SentimentVerySatisfied, 5),
         Mood("huzurlu", "Huzurlu", Color(0xFF36CFC9), Icons.Rounded.Spa, 4),
         Mood("sakin", "Sakin", Color(0xFF69B1FF), Icons.Rounded.SelfImprovement, 4),
@@ -30,8 +55,96 @@ object Moods {
         Mood("kararsiz", "Kararsız", Color(0xFFB5A58A), Icons.Rounded.QuestionMark, 3),
         Mood("karisik", "Karışık", Color(0xFFD46BCF), Icons.Rounded.Cloud, 3),
     )
-    private val map = all.associateBy { it.key }
-    operator fun get(k: String?) = k?.let { map[it] }
+}
+
+data class Saying(val text: String, val by: String)
+
+/** Her gün değişen sözler. Atıfı tartışmalı olan sözler bilerek alınmadı; kaynağı belirsizse "Atasözü" / "Anonim". */
+object Sayings {
+    val all = listOf(
+        Saying("Hayatta en hakiki mürşit ilimdir.", "Mustafa Kemal Atatürk"),
+        Saying("Yaratılanı severiz Yaradan'dan ötürü.", "Yunus Emre"),
+        Saying("Yaşamak bir ağaç gibi tek ve hür ve bir orman gibi kardeşçesine.", "Nâzım Hikmet"),
+        Saying("Bedava yaşıyoruz, bedava; hava bedava, bulut bedava.", "Orhan Veli Kanık"),
+        Saying("Bir insanı sevmekle başlar her şey.", "Sait Faik Abasıyanık"),
+        Saying("Aynı nehirde iki kez yıkanılmaz.", "Herakleitos"),
+        Saying("Sorgulanmamış bir hayat yaşanmaya değmez.", "Sokrates"),
+        Saying("Bin millik yolculuk tek bir adımla başlar.", "Lao Tzu"),
+        Saying("Hayat geriye bakılarak anlaşılır ama ileriye bakılarak yaşanır.", "Søren Kierkegaard"),
+        Saying("Kâğıt, insanlardan daha sabırlıdır.", "Anne Frank"),
+        Saying("Yaşamayı öğrenmek bütün bir ömür alır.", "Seneca"),
+        Saying("Cesaret edemediğimiz şey zor olduğu için değil; cesaret edemediğimiz için zordur.", "Seneca"),
+        Saying("Ruh, düşüncelerin rengini alır.", "Marcus Aurelius"),
+        Saying("Bizi üzen olaylar değil, olaylar hakkındaki yargılarımızdır.", "Epiktetos"),
+        Saying("Bildiğim tek şey, hiçbir şey bilmediğimdir.", "Sokrates"),
+        Saying("Kendini bil.", "Delfi Tapınağı yazıtı"),
+        Saying("Yurtta sulh, cihanda sulh.", "Mustafa Kemal Atatürk"),
+        Saying("Sanatsız kalan bir milletin hayat damarlarından biri kopmuş demektir.", "Mustafa Kemal Atatürk"),
+        Saying("Gelin tanış olalım, işi kolay kılalım; sevelim sevilelim, dünya kimseye kalmaz.", "Yunus Emre"),
+        Saying("Damlaya damlaya göl olur.", "Atasözü"),
+        Saying("Sabrın sonu selamettir.", "Atasözü"),
+        Saying("Ağaç yaşken eğilir.", "Atasözü"),
+        Saying("Bugünün işini yarına bırakma.", "Atasözü"),
+        Saying("Gülme komşuna, gelir başına.", "Atasözü"),
+        Saying("Ak akçe kara gün içindir.", "Atasözü"),
+        Saying("Bir elin nesi var, iki elin sesi var.", "Atasözü"),
+        Saying("Dost kara günde belli olur.", "Atasözü"),
+        Saying("Her işte bir hayır vardır.", "Atasözü"),
+        Saying("Söz gümüşse sükût altındır.", "Atasözü"),
+        Saying("Tatlı dil yılanı deliğinden çıkarır.", "Atasözü"),
+        Saying("Gönül ne kahve ister ne kahvehane, gönül sohbet ister kahve bahane.", "Atasözü"),
+        Saying("Bir kahvenin kırk yıl hatırı vardır.", "Atasözü"),
+        Saying("Akıl akıldan üstündür.", "Atasözü"),
+        Saying("Ayağını yorganına göre uzat.", "Atasözü"),
+        Saying("Komşu komşunun külüne muhtaçtır.", "Atasözü"),
+        Saying("Ne ekersen onu biçersin.", "Atasözü"),
+        Saying("Yavaş yavaş, yürüyen yol alır.", "Atasözü"),
+        Saying("İşleyen demir ışıldar.", "Atasözü"),
+        Saying("Bilmemek ayıp değil, öğrenmemek ayıp.", "Atasözü"),
+        Saying("Her karanlık gecenin bir aydınlık sabahı vardır.", "Söz"),
+        Saying("Umut fakirin ekmeğidir.", "Atasözü"),
+        Saying("Bir gülün yüzünden bin dikene su verilir.", "Atasözü"),
+        Saying("Gün doğmadan neler doğar.", "Atasözü"),
+        Saying("Dünyayı güzellik kurtaracak.", "Fyodor Dostoyevski"),
+        Saying("İnsan, yalnızca kalbiyle doğru görebilir.", "Antoine de Saint-Exupéry"),
+        Saying("Sen bir gülü sevdiysen, onun için harcadığın zamandır onu önemli kılan.", "Antoine de Saint-Exupéry"),
+        Saying("Düşünüyorum, öyleyse varım.", "René Descartes"),
+        Saying("Hayal gücü bilgiden daha önemlidir.", "Albert Einstein"),
+        Saying("Mutlu aileler birbirine benzer; her mutsuz ailenin mutsuzluğu kendine özgüdür.", "Lev Tolstoy"),
+        Saying("Bir şeyin değerini bilmek için onu kaybetmek gerekmez; ona dikkatle bakmak yeter.", "Anonim"),
+        Saying("Bugün, dün endişelendiğin yarındır.", "Anonim"),
+        Saying("Küçük adımlar da seni bir yere götürür.", "Anonim"),
+        Saying("Yavaş gitmekten korkma, durmaktan kork.", "Çin atasözü"),
+        Saying("Ağaç dikmenin en iyi zamanı yirmi yıl önceydi; ikinci en iyi zamanı bugündür.", "Anonim"),
+        Saying("Yedi kez düş, sekiz kez kalk.", "Japon atasözü"),
+        Saying("Sakin denizler usta denizci yetiştirmez.", "Anonim"),
+        Saying("Hızlı gitmek istiyorsan yalnız git; uzağa gitmek istiyorsan birlikte git.", "Afrika atasözü"),
+        Saying("Bedenine iyi bak; içinde yaşayacağın tek yer orası.", "Jim Rohn"),
+        Saying("Yazmak, düşünmenin en yavaş ve en dürüst hâlidir.", "Anonim"),
+        Saying("Her gün yeni bir sayfa; ne yazacağına sen karar verirsin.", "Anonim"),
+        Saying("Unutma: hatırlamaya değer günler, çoğu zaman sıradan görünür.", "Anonim"),
+        Saying("Bir gün bu günleri özleyeceksin; şimdiden biraz sev.", "Anonim"),
+        Saying("Dinlenmek de yolun bir parçasıdır.", "Anonim"),
+        Saying("Mükemmel olmasına gerek yok; sadece başla.", "Anonim"),
+        Saying("İyi bakarsan iyi görürsün.", "Anonim"),
+        Saying("Bazı günler sadece nefes almak bile yeterlidir.", "Anonim"),
+        Saying("Teşekkür etmek, sahip olduklarını yeterli kılar.", "Anonim"),
+    )
+    fun forDay(day: Long): Saying = all[Math.floorMod(day * 31 + 7, all.size.toLong()).toInt()]
+}
+
+data class Sign(val key: String, val name: String, val dates: String, val slug: String)
+
+object Signs {
+    val all = listOf(
+        Sign("koc", "Koç", "21 Mart – 20 Nisan", "koc"), Sign("boga", "Boğa", "21 Nisan – 21 Mayıs", "boga"),
+        Sign("ikizler", "İkizler", "22 Mayıs – 22 Haziran", "ikizler"), Sign("yengec", "Yengeç", "23 Haziran – 22 Temmuz", "yengec"),
+        Sign("aslan", "Aslan", "23 Temmuz – 22 Ağustos", "aslan"), Sign("basak", "Başak", "23 Ağustos – 22 Eylül", "basak"),
+        Sign("terazi", "Terazi", "23 Eylül – 22 Ekim", "terazi"), Sign("akrep", "Akrep", "23 Ekim – 21 Kasım", "akrep"),
+        Sign("yay", "Yay", "22 Kasım – 21 Aralık", "yay"), Sign("oglak", "Oğlak", "22 Aralık – 21 Ocak", "oglak"),
+        Sign("kova", "Kova", "22 Ocak – 19 Şubat", "kova"), Sign("balik", "Balık", "20 Şubat – 20 Mart", "balik"),
+    )
+    operator fun get(k: String) = all.firstOrNull { it.key == k } ?: all[8]
 }
 
 data class Template(val key: String, val name: String, val title: String, val body: String, val tag: String)

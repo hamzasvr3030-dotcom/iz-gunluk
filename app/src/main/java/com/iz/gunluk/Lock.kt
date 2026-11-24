@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -34,7 +35,10 @@ import kotlinx.coroutines.launch
 import java.security.MessageDigest
 import java.security.SecureRandom
 
+enum class AuthMode { App, Hidden, Verify }
+
 object Lock {
+    const val PIN_LEN = 6
     /** Uygulama kilitli mi (kilit ekranı gösterilsin mi). */
     var locked by mutableStateOf(false)
     /** Gizli kayıtlar bu oturumda açıldı mı. */
@@ -48,15 +52,34 @@ object Lock {
     private fun hash(secret: String, salt: String): String =
         MessageDigest.getInstance("SHA-256").digest((salt + ":" + secret).toByteArray()).joinToString("") { "%02x".format(it) }
 
-    fun set(type: String, secret: String) {
+    private fun store(p: String, secret: String) {
         val salt = ByteArray(16).also { SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it) }
-        Prefs.putStr("lockSalt", salt); Prefs.putStr("lockHash", hash(secret, salt)); Prefs.putStr("pinLen", secret.length.toString())
-        Prefs.lockType = type; Prefs.save()
+        Prefs.putStr("${p}Salt", salt); Prefs.putStr("${p}Hash", hash(secret, salt)); Prefs.putStr("${p}Len", secret.length.toString())
     }
+    private fun matches(p: String, secret: String) = Prefs.str("${p}Hash").isNotEmpty() && hash(secret, Prefs.str("${p}Salt")) == Prefs.str("${p}Hash")
+    private fun has(p: String) = Prefs.str("${p}Hash").isNotEmpty()
+    private fun wipe(p: String) { Prefs.putStr("${p}Hash", ""); Prefs.putStr("${p}Salt", ""); Prefs.putStr("${p}Len", "") }
 
-    fun clear() { Prefs.putStr("lockHash", ""); Prefs.lockType = "none"; Prefs.biometric = false; Prefs.save() }
+    /** Ana kilit ("lock" önekli anahtarlar, 1.0.0 ile uyumlu). */
+    fun set(type: String, secret: String) { store("lock", secret); Prefs.lockType = type; Prefs.save() }
+    fun check(secret: String) = matches("lock", secret)
+    fun mainLen() = (Prefs.str("lockLen").ifEmpty { Prefs.str("pinLen") }).toIntOrNull() ?: 4
+    fun clear() { wipe("lock"); wipe("decoy"); Prefs.lockType = "none"; Prefs.biometric = false; Prefs.save() }
 
-    fun check(secret: String) = Prefs.str("lockHash").isNotEmpty() && hash(secret, Prefs.str("lockSalt")) == Prefs.str("lockHash")
+    /** Sahte PIN: girildiğinde ayrı, boş bir günlük açılır. */
+    val decoySet get() = has("decoy")
+    fun setDecoy(secret: String) = store("decoy", secret)
+    fun clearDecoy() = wipe("decoy")
+    fun isDecoy(secret: String) = matches("decoy", secret)
+
+    /** Gizli kayıtlar için ayrı PIN. */
+    val hiddenPinSet get() = has("hidden")
+    fun setHiddenPin(secret: String) = store("hidden", secret)
+    fun clearHiddenPin() = wipe("hidden")
+    fun checkHidden(secret: String) = matches("hidden", secret)
+
+    /** Gizli kayıtları korumak için en az bir doğrulama yolu var mı. */
+    val canProtectHidden get() = enabled || hiddenPinSet
 
     fun canBiometric(a: FragmentActivity) =
         BiometricManager.from(a).canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK) == BiometricManager.BIOMETRIC_SUCCESS
@@ -66,7 +89,7 @@ object Lock {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) { ok() }
         })
         val info = BiometricPrompt.PromptInfo.Builder().setTitle(title).setSubtitle("İz · kişisel günlük")
-            .setNegativeButtonText(if (Prefs.lockType == "none") "Vazgeç" else "Şifre kullan")
+            .setNegativeButtonText("PIN kullan")
             .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_WEAK).build()
         try { p.authenticate(info) } catch (_: Exception) { }
     }
@@ -84,20 +107,29 @@ object Lock {
 
 /**
  * Kimlik doğrulama ekranı: PIN tuş takımı veya desen + biyometrik.
- * [mode] "unlock" = uygulamayı aç, "verify" = gizli kayıtlar / ayar değişikliği için doğrula.
+ * App: uygulamayı açar (sahte PIN boş günlüğü açar). Hidden: gizli kayıtlar (ayrı PIN varsa o). Verify: ayar değişikliği.
  */
 @Composable
-fun AuthScreen(title: String = "İz kilitli", sub: String = "Devam etmek için doğrula", onCancel: (() -> Unit)? = null, onOk: () -> Unit) {
+fun AuthScreen(title: String = "İz kilitli", sub: String = "Devam etmek için doğrula", mode: AuthMode = AuthMode.App, onCancel: (() -> Unit)? = null, onOk: () -> Unit) {
     val c = Iz.c
     val ctx = LocalContext.current
     val act = ctx as? FragmentActivity
     val shake = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
     var err by remember { mutableStateOf("") }
+    val useHiddenPin = mode == AuthMode.Hidden && Lock.hiddenPinSet
+    val bioAllowed = Prefs.biometric && act != null && Lock.canBiometric(act) && !Store.decoy && (!useHiddenPin || Prefs.hiddenBio)
+    val realOk = { if (mode == AuthMode.App && Store.decoy) Store.switchTo(false); onOk() }
     fun fail() { err = "Hatalı, tekrar dene"; scope.launch { for (x in listOf(18f, -14f, 10f, -6f, 0f)) shake.animateTo(x) } }
-    LaunchedEffect(Unit) { if (Prefs.biometric && act != null && Lock.canBiometric(act)) Lock.biometric(act, title, onOk) }
+    fun submit(s: String): Boolean = when {
+        useHiddenPin -> if (Lock.checkHidden(s)) { onOk(); true } else false
+        Lock.check(s) -> { realOk(); true }
+        mode == AuthMode.App && Lock.isDecoy(s) -> { Store.switchTo(true); Nav.home(); Nav.tab = 0; onOk(); true }
+        else -> false
+    }
+    LaunchedEffect(Unit) { if (bioAllowed && mode != AuthMode.Verify) Lock.biometric(act!!, title) { realOk() } }
     Column(
-        Modifier.fillMaxSize().background(c.bg).systemBarsPadding().padding(24.dp),
+        Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Covers.colors(Prefs.cover).first().copy(alpha = 0.35f), c.bg, c.bg))).systemBarsPadding().padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
     ) {
         Box(Modifier.size(64.dp).clip(CircleShape).background(c.accentSoft), contentAlignment = Alignment.Center) {
@@ -106,17 +138,17 @@ fun AuthScreen(title: String = "İz kilitli", sub: String = "Devam etmek için d
         Spacer(Modifier.height(18.dp))
         Text(title, style = MaterialTheme.typography.headlineSmall, color = c.text)
         Spacer(Modifier.height(6.dp))
-        Text(if (err.isNotEmpty()) err else sub, color = if (err.isNotEmpty()) c.danger else c.sub)
+        Text(if (err.isNotEmpty()) err else if (useHiddenPin) "Gizli kayıtların PIN'ini gir" else sub, color = if (err.isNotEmpty()) c.danger else c.sub)
         Spacer(Modifier.height(28.dp))
         Box(Modifier.graphicsLayer { translationX = shake.value }) {
-            if (Prefs.lockType == "pattern") PatternPad { if (Lock.check(it)) onOk() else fail() }
-            else PinPad(length = Prefs.str("pinLen").toIntOrNull() ?: 4) { pin, reset -> if (Lock.check(pin)) onOk() else { fail(); reset() } }
+            if (Prefs.lockType == "pattern" && !useHiddenPin) PatternPad { if (!submit(it)) fail() }
+            else PinPad(length = if (useHiddenPin) Lock.PIN_LEN else Lock.mainLen()) { pin, reset -> if (!submit(pin)) { fail(); reset() } }
         }
         Spacer(Modifier.height(20.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (Prefs.biometric && act != null && Lock.canBiometric(act)) {
-                Row(Modifier.clip(CircleShape).clickable { Lock.biometric(act, title, onOk) }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.Fingerprint, null, tint = c.accent); Spacer(Modifier.width(6.dp)); Text("Parmak izi / yüz", color = c.accent)
+            if (bioAllowed) {
+                Row(Modifier.clip(CircleShape).clickable { Lock.biometric(act!!, title) { realOk() } }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.Fingerprint, null, tint = c.accent); Spacer(Modifier.width(6.dp)); Text("Parmak izi", color = c.accent)
                 }
             }
             if (onCancel != null) Text("Vazgeç", color = c.sub, modifier = Modifier.clip(CircleShape).clickable { onCancel() }.padding(12.dp))
@@ -125,38 +157,34 @@ fun AuthScreen(title: String = "İz kilitli", sub: String = "Devam etmek için d
 }
 
 @Composable
-fun PinPad(length: Int = 4, flexible: Boolean = false, onDone: (String, () -> Unit) -> Unit) {
+fun PinPad(length: Int = Lock.PIN_LEN, onDone: (String, () -> Unit) -> Unit) {
     val c = Iz.c
     var pin by remember { mutableStateOf("") }
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            repeat(if (flexible) maxOf(4, pin.length) else length) { i ->
-                Box(Modifier.size(14.dp).clip(CircleShape).background(if (i < pin.length) c.accent else c.line))
-            }
+            repeat(length) { i -> Box(Modifier.size(14.dp).clip(CircleShape).background(if (i < pin.length) c.accent else c.line)) }
         }
         Spacer(Modifier.height(28.dp))
-        val keys = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", if (flexible) "OK" else "", "0", "<")
+        val keys = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "<")
         for (row in keys.chunked(3)) {
             Row(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
                 for (k in row) {
                     Box(
-                        Modifier.size(72.dp).clip(CircleShape).background(if (k.isEmpty()) c.bg else c.card)
+                        Modifier.size(72.dp).clip(CircleShape).background(if (k.isEmpty()) androidx.compose.ui.graphics.Color.Transparent else c.card)
                             .clickable(enabled = k.isNotEmpty()) {
                                 when (k) {
                                     "<" -> pin = pin.dropLast(1)
-                                    "OK" -> if (pin.length >= 4) { val p = pin; onDone(p) { pin = "" } }
-                                    else -> if (pin.length < 8) {
+                                    else -> if (pin.length < length) {
                                         pin += k
-                                        if (!flexible && pin.length == length) { val p = pin; onDone(p) { pin = "" } }
+                                        if (pin.length == length) { val p = pin; onDone(p) { pin = "" } }
                                     }
                                 }
                             },
                         contentAlignment = Alignment.Center,
                     ) {
                         when (k) {
-                            "<" -> Icon(Icons.AutoMirrored.Rounded.Backspace, null, tint = c.sub)
-                            "OK" -> Text("Tamam", color = c.accent, fontWeight = FontWeight.Bold)
-                            else -> Text(k, fontSize = 26.sp, color = c.text)
+                            "<" -> Icon(Icons.AutoMirrored.Rounded.Backspace, "Sil", tint = c.sub)
+                            else -> Text(k, fontSize = 26.sp, color = c.text, fontWeight = FontWeight.Normal)
                         }
                     }
                 }
@@ -202,5 +230,31 @@ fun PatternPad(onDone: (String) -> Unit) {
             drawCircle(if (on) c.accent.copy(alpha = 0.25f) else c.line, radius = size.width / 11f, center = center(i))
             drawCircle(if (on) c.accent else c.sub, radius = size.width / 40f, center = center(i))
         }
+    }
+}
+
+/** Yeni bir 6 haneli PIN belirleme akışı (iki kez girilir). */
+@Composable
+fun PinSetup(title: String, sub: String, onCancel: () -> Unit, onDone: (String) -> Unit) {
+    val c = Iz.c
+    var first by remember { mutableStateOf<String?>(null) }
+    var msg by remember { mutableStateOf("") }
+    Column(Modifier.fillMaxSize().background(c.bg).systemBarsPadding().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Text(if (first == null) title else "Tekrar gir", style = MaterialTheme.typography.headlineSmall, color = c.text)
+        Spacer(Modifier.height(6.dp))
+        Text(msg.ifEmpty { sub }, color = if (msg.isNotEmpty()) c.danger else c.sub, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        Spacer(Modifier.height(28.dp))
+        key(first) {
+            PinPad(Lock.PIN_LEN) { p, reset ->
+                when {
+                    first == null -> { first = p; msg = "" }
+                    first == p -> onDone(p)
+                    else -> { first = null; msg = "Eşleşmedi, baştan dene" }
+                }
+                reset()
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+        Text("Vazgeç", color = c.sub, modifier = Modifier.clip(CircleShape).clickable { onCancel() }.padding(12.dp))
     }
 }

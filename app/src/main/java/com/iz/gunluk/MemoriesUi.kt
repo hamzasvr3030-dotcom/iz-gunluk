@@ -22,6 +22,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.toArgb
@@ -50,7 +51,7 @@ import java.time.ZoneOffset
 fun MemoriesScreen() {
     val c = Iz.c
     @Suppress("UNUSED_VARIABLE") val v = Store.version
-    val tabs = listOf("Favoriler", "Fotoğraflar", "Mektuplar", "Harita", "Geçmişte bugün")
+    val tabs = listOf("Favoriler", "Fotoğraflar", "Mektuplar", "Harita", "Geçmişte bugün", "Kişiler")
     val vis = Store.visible()
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         Text("Anılar", style = MaterialTheme.typography.headlineMedium, color = c.text, modifier = Modifier.padding(start = 20.dp, top = 18.dp, bottom = 12.dp))
@@ -81,6 +82,32 @@ fun MemoriesScreen() {
                 }
             }
             2 -> LettersList()
+            5 -> {
+                val people = vis.flatMap { e -> e.people.map { Text.fold(it) to (it to e) } }.groupBy({ it.first }, { it.second })
+                    .map { (_, l) -> Triple(l.first().first, l.map { it.second }.distinctBy { it.id }, l.size) }.sortedByDescending { it.second.size }
+                Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
+                    if (people.isEmpty()) EmptyState(Icons.Rounded.People, "Henüz kimseyi anmadın", "Yazarken @Ayşe gibi bir isim yaz; o kişiyle ilgili tüm anılar burada toplanır.")
+                    people.forEach { (name, es, _) ->
+                        val last = es.maxBy { it.day }
+                        val top = Insights.moodCounts(es).firstOrNull()?.first
+                        IzCard(onClick = { Nav.listPerson = name; Nav.tab = 1 }, pad = 14.dp) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.size(42.dp).clip(CircleShape).background(Color(0xFF36CFC9).copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
+                                    Text(name.take(1).uppercase(java.util.Locale.forLanguageTag("tr")), color = Color(0xFF36CFC9), fontWeight = FontWeight.Bold)
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("@$name", color = c.text, fontWeight = FontWeight.Bold)
+                                    Text("${es.size} anı · son: ${Tr.ago(last.date)}", color = c.sub, style = MaterialTheme.typography.bodyMedium)
+                                }
+                                if (top != null) { MoodBadge(top, 26.dp) }
+                            }
+                        }
+                        Spacer(Modifier.height(10.dp))
+                    }
+                    Spacer(Modifier.height(30.dp))
+                }
+            }
             4 -> {
                 val today = LocalDate.now()
                 val list = Insights.onThisDay(vis, today)

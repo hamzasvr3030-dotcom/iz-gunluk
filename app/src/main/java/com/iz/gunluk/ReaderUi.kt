@@ -57,7 +57,7 @@ fun ReaderScreen(id: String) {
     val e = Store.get(id)
     if (e == null) { LaunchedEffect(Unit) { Nav.back() }; return }
     if (e.hidden && !Lock.hiddenOpen) {
-        AuthScreen("Gizli kayıt", "Bu kaydı görmek için doğrula", onCancel = { Nav.back() }) { Lock.hiddenOpen = true }
+        AuthScreen("Gizli kayıt", "Bu kaydı görmek için doğrula", mode = AuthMode.Hidden, onCancel = { Nav.back() }) { Lock.hiddenOpen = true }
         return
     }
     var speaking by remember { mutableStateOf(false) }
@@ -74,11 +74,18 @@ fun ReaderScreen(id: String) {
             IconButton(onClick = { Store.upsert(e.copy(fav = !e.fav, updated = System.currentTimeMillis())) }) {
                 Icon(if (e.fav) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, "Favori", tint = if (e.fav) Color(0xFFFF5C8A) else c.sub)
             }
-            IconButton(onClick = {
-                val text = Backup.text(listOf(e))
-                Lock.suppress = true
-                ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), "Paylaş"))
-            }) { Icon(Icons.Rounded.Share, "Paylaş", tint = c.sub) }
+            Box {
+                var shareMenu by remember { mutableStateOf(false) }
+                IconButton(onClick = { shareMenu = true }) { Icon(Icons.Rounded.Share, "Paylaş", tint = c.sub) }
+                DropdownMenu(shareMenu, { shareMenu = false }) {
+                    DropdownMenuItem(text = { Text("Anı kartı (görsel)") }, leadingIcon = { Icon(Icons.Rounded.Image, null) }, onClick = { shareMenu = false; ShareCard.forEntry(ctx, e) })
+                    DropdownMenuItem(text = { Text("Metin olarak") }, leadingIcon = { Icon(Icons.Rounded.Notes, null) }, onClick = {
+                        shareMenu = false
+                        Lock.suppress = true
+                        ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, Backup.text(listOf(e))), "Paylaş"))
+                    })
+                }
+            }
             IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Rounded.DeleteOutline, "Sil", tint = c.sub) }
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
@@ -93,20 +100,31 @@ fun ReaderScreen(id: String) {
             @OptIn(ExperimentalLayoutApi::class)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (mood != null) MetaChip(mood.icon, mood.label, mood.color) { }
+                e.extraMoods.mapNotNull { Moods[it] }.forEach { m -> MetaChip(m.icon, m.label, m.color) { } }
                 if (e.energy > 0) MetaChip(Icons.Rounded.Bolt, "Enerji ${e.energy}/10", Color(0xFFFFC53D)) { }
                 if (e.place.isNotBlank()) MetaChip(Icons.Rounded.Place, e.place, c.sub) { if (e.lat != null) Nav.go(Route.Map) }
                 if (e.weather.isNotBlank()) MetaChip(Icons.Rounded.WbSunny, e.weather, c.sub) { }
                 e.allTags.forEach { t -> MetaChip(Icons.Rounded.Tag, t, c.accent) { Nav.listTag = t; Nav.home(); Nav.tab = 1 } }
+                e.people.forEach { pp -> MetaChip(Icons.Rounded.Person, pp, Color(0xFF36CFC9)) { Nav.listPerson = pp; Nav.home(); Nav.tab = 1 } }
             }
             if (e.question.isNotBlank()) {
                 Spacer(Modifier.height(16.dp))
                 Text(e.question, color = c.accent, style = MaterialTheme.typography.titleMedium)
             }
             Spacer(Modifier.height(16.dp))
-            SelectionContainer {
-                Text(RichText.render(e.body, c.accent, c.sub, c.highlight), style = writingStyle())
+            RichText.blocks(e.body).forEach { b ->
+                when (b) {
+                    is RichText.TextBlock -> SelectionContainer { Text(RichText.render(b.text, c.accent, c.sub, c.highlight), style = writingStyle()) }
+                    is RichText.PhotoBlock -> {
+                        val m = e.media.firstOrNull { it.file == b.file } ?: Media(b.file, "photo", 0)
+                        Spacer(Modifier.height(8.dp))
+                        Thumb(m, Modifier.fillMaxWidth().heightIn(max = 420.dp).clip(RoundS).clickable { MediaKit.open(ctx, m) })
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
             }
-            if (e.media.isNotEmpty()) { Spacer(Modifier.height(18.dp)); MediaStrip(e.media) }
+            val rest = e.media.filter { it.file !in e.inlineFiles }
+            if (rest.isNotEmpty()) { Spacer(Modifier.height(18.dp)); MediaStrip(rest) }
             Spacer(Modifier.height(24.dp))
             Text("${e.words} kelime · ${e.plain.length} karakter", color = c.faint, style = MaterialTheme.typography.labelMedium)
             Spacer(Modifier.height(100.dp))
@@ -120,8 +138,8 @@ fun ReaderScreen(id: String) {
     if (confirmDelete) AlertDialog(
         onDismissRequest = { confirmDelete = false },
         title = { Text("Bu girdi silinsin mi?") },
-        text = { Text("Yazı ve eklenen medya kalıcı olarak silinir.") },
-        confirmButton = { TextButton(onClick = { confirmDelete = false; Nav.back(); Store.delete(e.id) }) { Text("Sil", color = c.danger) } },
+        text = { Text("Girdi çöp kutusuna taşınır; 30 gün içinde Ayarlar > Çöp kutusu'ndan geri alabilirsin.") },
+        confirmButton = { TextButton(onClick = { confirmDelete = false; Nav.back(); Store.delete(e.id); Nav.toast = "Çöp kutusuna taşındı" }) { Text("Sil", color = c.danger) } },
         dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Vazgeç") } },
     )
 }

@@ -109,6 +109,7 @@ class IzWidget : AppWidgetProvider() {
 
     companion object {
         fun update(ctx: Context) {
+            IzWidgetLarge.update(ctx)
             try {
                 val m = AppWidgetManager.getInstance(ctx)
                 val ids = m.getAppWidgetIds(ComponentName(ctx, IzWidget::class.java))

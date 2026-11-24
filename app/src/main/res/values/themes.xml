@@ -1,9 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="night">#FF0A0E17</color>
+    <string name="widget_large_desc">Ruh hâlini tek dokunuşla seç, yaz veya hızlı not al</string>
+    <string name="sc_write">Yeni girdi</string>
+    <string name="sc_note">Hızlı not</string>
+    <string name="sc_voice">Sesli günlük</string>
+    <string name="tile">İz\'e yaz</string>
     <string name="widget_desc">Bugünün ruh hâli, seri ve hızlı yazma</string>
     <style name="Theme.Iz" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/night</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+    <style name="Theme.Iz.Dialog" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">true</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>

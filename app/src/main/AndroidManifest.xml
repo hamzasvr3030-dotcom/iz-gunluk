@@ -13,14 +13,15 @@
 
     <queries>
         <intent><action android:name="android.speech.RecognitionService" /></intent>
+        <intent><action android:name="android.speech.action.RECOGNIZE_SPEECH" /></intent>
         <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>
     </queries>
 
     <application
         android:name=".App"
         android:allowBackup="false"
-        android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher"
+        android:icon="@mipmap/ic_nib"
+        android:roundIcon="@mipmap/ic_nib"
         android:label="İz"
         android:supportsRtl="true"
         android:theme="@style/Theme.Iz">
@@ -30,12 +31,51 @@
             android:exported="true"
             android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize"
-            android:theme="@style/Theme.Iz">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+            android:theme="@style/Theme.Iz" />
+
+        <!-- Seçilebilir uygulama simgeleri: ADLARI DEĞİŞTİRME (seçim sıfırlanır) -->
+        <activity-alias android:name=".IconNib" android:targetActivity=".MainActivity" android:enabled="true" android:exported="true"
+            android:icon="@mipmap/ic_nib" android:roundIcon="@mipmap/ic_nib" android:label="İz">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
+        </activity-alias>
+        <activity-alias android:name=".IconClassic" android:targetActivity=".MainActivity" android:enabled="false" android:exported="true"
+            android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:label="İz">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
+        </activity-alias>
+        <activity-alias android:name=".IconBook" android:targetActivity=".MainActivity" android:enabled="false" android:exported="true"
+            android:icon="@mipmap/ic_book" android:roundIcon="@mipmap/ic_book" android:label="İz">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
+        </activity-alias>
+        <activity-alias android:name=".IconMoon" android:targetActivity=".MainActivity" android:enabled="false" android:exported="true"
+            android:icon="@mipmap/ic_moon" android:roundIcon="@mipmap/ic_moon" android:label="İz">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
+        </activity-alias>
+        <activity-alias android:name=".IconSteps" android:targetActivity=".MainActivity" android:enabled="false" android:exported="true"
+            android:icon="@mipmap/ic_steps" android:roundIcon="@mipmap/ic_steps" android:label="İz">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
+        </activity-alias>
+
+        <activity
+            android:name=".QuickNoteActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=".quick"
+            android:windowSoftInputMode="adjustResize|stateVisible"
+            android:theme="@style/Theme.Iz.Dialog" />
+
+        <service
+            android:name=".WriteTile"
+            android:exported="true"
+            android:icon="@drawable/ic_tile"
+            android:label="@string/tile"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
 
         <receiver android:name=".ReminderReceiver" android:exported="false" />
         <receiver android:name=".BootReceiver" android:exported="false">
@@ -49,6 +89,10 @@
         <receiver android:name=".IzWidget" android:exported="true" android:label="İz · Bugün">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info" />
+        </receiver>
+        <receiver android:name=".IzWidgetLarge" android:exported="true" android:label="İz · Ruh hâli">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_large_info" />
         </receiver>
 
         <provider

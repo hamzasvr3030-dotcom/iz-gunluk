@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="write" android:enabled="true" android:icon="@drawable/sc_write"
+        android:shortcutShortLabel="@string/sc_write" android:shortcutLongLabel="@string/sc_write">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="com.iz.gunluk" android:targetClass="com.iz.gunluk.MainActivity">
+            <extra android:name="open" android:value="write" />
+        </intent>
+    </shortcut>
+    <shortcut android:shortcutId="note" android:enabled="true" android:icon="@drawable/sc_note"
+        android:shortcutShortLabel="@string/sc_note" android:shortcutLongLabel="@string/sc_note">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="com.iz.gunluk" android:targetClass="com.iz.gunluk.QuickNoteActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="voice" android:enabled="true" android:icon="@drawable/sc_voice"
+        android:shortcutShortLabel="@string/sc_voice" android:shortcutLongLabel="@string/sc_voice">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="com.iz.gunluk" android:targetClass="com.iz.gunluk.MainActivity">
+            <extra android:name="open" android:value="voice" />
+        </intent>
+    </shortcut>
+</shortcuts>

@@ -23,6 +23,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.FormatListBulleted
+import androidx.compose.material.icons.automirrored.rounded.Redo
+import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -87,7 +89,28 @@ fun EditorScreen(r: Route.Editor) {
     val bodyFocus = remember { FocusRequester() }
 
     fun update(f: (Entry) -> Entry) { e = f(e); saved = false }
-    fun setBody(v: TextFieldValue) { if (v.text != body.text) saved = false; body = v; e = e.copy(body = v.text) }
+    // geri al / yinele: yazma duraksamalarında ve satır sonlarında anlık görüntü alınır
+    val undo = remember { mutableStateListOf<TextFieldValue>() }
+    val redo = remember { mutableStateListOf<TextFieldValue>() }
+    var lastSnap by remember { mutableLongStateOf(0L) }
+    fun applyBody(v: TextFieldValue) { if (v.text != body.text) saved = false; body = v; e = e.copy(body = v.text) }
+    fun setBody(v: TextFieldValue) {
+        if (v.text != body.text) {
+            val now = System.currentTimeMillis()
+            val boundary = v.text.length < body.text.length - 1 || v.text.length > body.text.length + 1 || v.text.endsWith("\n") || v.text.endsWith(" ")
+            if (undo.isEmpty() || now - lastSnap > 1200 || boundary) { undo.add(body); if (undo.size > 200) undo.removeAt(0); lastSnap = now }
+            redo.clear()
+        }
+        applyBody(v)
+    }
+    fun undoOnce() { if (undo.isNotEmpty()) { redo.add(body); applyBody(undo.removeAt(undo.lastIndex)) } }
+    fun redoOnce() { if (redo.isNotEmpty()) { undo.add(body); applyBody(redo.removeAt(redo.lastIndex)) } }
+    fun insertAtCursor(ins: String, lineMode: Boolean = false) {
+        val v = body; val at = v.selection.end; val pre = v.text.substring(0, at); val post = v.text.substring(at)
+        val t = if (lineMode) (if (pre.isEmpty() || pre.endsWith("\n")) "" else "\n") + ins + (if (post.startsWith("\n")) "" else "\n")
+            else (if (pre.isEmpty() || pre.endsWith(" ") || pre.endsWith("\n")) "" else " ") + ins
+        setBody(TextFieldValue(pre + t + post, TextRange(at + t.length)))
+    }
 
     fun persist() {
         val cur = e.copy(body = body.text)
@@ -112,7 +135,12 @@ fun EditorScreen(r: Route.Editor) {
     val video = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { u ->
         if (u != null) scope.launch { MediaKit.import(ctx, u, "video")?.let { m -> update { it.copy(media = it.media + m) } } }
     }
+    val inlinePhoto = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { u ->
+        if (u != null) scope.launch { MediaKit.import(ctx, u, "photo")?.let { m -> update { it.copy(media = it.media + m) }; insertAtCursor(RichText.photoToken(m.file), lineMode = true) } }
+    }
     val speech = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
+        // "sesli not + yazı": tanıyıcı sesi de döndürdüyse ses notu olarak sakla
+        res.data?.data?.let { au -> scope.launch { MediaKit.import(ctx, au, "audio")?.let { m -> update { it.copy(media = it.media + m.copy(kind = "audio")) } } } }
         val t = res.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
         if (!t.isNullOrBlank()) {
             val cur = body; val at = cur.selection.end
@@ -121,10 +149,11 @@ fun EditorScreen(r: Route.Editor) {
             setBody(TextFieldValue(pre + ins + cur.text.substring(at), TextRange(at + ins.length)))
         }
     }
-    fun dictate() {
+    fun dictate(keepAudio: Boolean = false) {
         val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "tr-TR").putExtra(RecognizerIntent.EXTRA_PROMPT, "Konuş, ben yazayım")
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "tr-TR").putExtra(RecognizerIntent.EXTRA_PROMPT, if (keepAudio) "Konuş: hem ses notu hem yazı olacak" else "Konuş, ben yazayım")
+        if (keepAudio) i.putExtra("android.speech.extra.GET_AUDIO_FORMAT", "audio/AMR").putExtra("android.speech.extra.GET_AUDIO", true)
         try { Lock.suppress = true; speech.launch(i) } catch (_: Exception) { Lock.suppress = false; Nav.toast = "Bu cihazda konuşma tanıma bulunamadı" }
     }
     val micPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
@@ -232,7 +261,7 @@ fun EditorScreen(r: Route.Editor) {
                         DropdownMenuItem({ Text("Şablon ekle") }, { menu = false; pickTemplate = true }, leadingIcon = { Icon(Icons.Rounded.Dashboard, null) })
                         DropdownMenuItem({ Text(if (e.hidden) "Gizliliği kaldır" else "Gizli günlük yap") }, {
                             menu = false
-                            if (!e.hidden && !Lock.enabled) Nav.toast = "Önce Ayarlar > Güvenlik'ten PIN veya desen oluştur"
+                            if (!e.hidden && !Lock.canProtectHidden) Nav.toast = "Önce Ayarlar > Gizlilik'ten PIN oluştur"
                             else { update { it.copy(hidden = !it.hidden) }; if (!e.hidden) Lock.hiddenOpen = true }
                         }, leadingIcon = { Icon(Icons.Rounded.Lock, null) })
                         DropdownMenuItem({ Text("Tarihi değiştir") }, { menu = false; datePick = true }, leadingIcon = { Icon(Icons.Rounded.Event, null) })
@@ -270,14 +299,14 @@ fun EditorScreen(r: Route.Editor) {
             BasicTextField(
                 e.title, { v -> update { it.copy(title = v.replace("\n", "")) } },
                 textStyle = TextStyle(color = c.text, fontSize = (24 * Prefs.fontScale).sp, fontWeight = FontWeight.Bold, fontFamily = Palette.family(Prefs.font)),
-                cursorBrush = SolidColor(c.accent), keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                cursorBrush = SolidColor(c.accent), keyboardOptions = KeyboardOptions(capitalization = if (Prefs.autoCap) KeyboardCapitalization.Sentences else KeyboardCapitalization.None, autoCorrectEnabled = Prefs.autoCorrect),
                 modifier = Modifier.fillMaxWidth(),
                 decorationBox = { inner -> if (e.title.isEmpty()) Text("Başlık (isteğe bağlı)", color = c.faint, fontSize = (24 * Prefs.fontScale).sp, fontWeight = FontWeight.Bold); inner() },
             )
             if (!focus) {
                 Spacer(Modifier.height(12.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    MetaChip(mood?.icon ?: Icons.Rounded.Mood, mood?.label ?: "Ruh hâli", mood?.color ?: c.sub) { details = true }
+                    MetaChip(mood?.icon ?: Icons.Rounded.Mood, (mood?.label ?: "Ruh hâli") + if (e.extraMoods.isNotEmpty()) " +${e.extraMoods.size}" else "", mood?.color ?: c.sub) { details = true }
                     MetaChip(Icons.Rounded.Bolt, if (e.energy > 0) "Enerji ${e.energy}/10" else "Enerji", if (e.energy > 0) Color(0xFFFFC53D) else c.sub) { details = true }
                     if (e.place.isNotBlank()) MetaChip(Icons.Rounded.Place, e.place, c.sub) { details = true }
                     if (e.weather.isNotBlank()) MetaChip(Icons.Rounded.WbSunny, e.weather, c.sub) { details = true }
@@ -291,17 +320,26 @@ fun EditorScreen(r: Route.Editor) {
                 textStyle = writingStyle(),
                 cursorBrush = SolidColor(c.accent),
                 visualTransformation = RichText.Editor(c.accent, c.faint, c.highlight, if (findOpen) query else ""),
-                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                modifier = Modifier.fillMaxWidth().heightIn(min = 280.dp).focusRequester(bodyFocus),
+                keyboardOptions = KeyboardOptions(capitalization = if (Prefs.autoCap) KeyboardCapitalization.Sentences else KeyboardCapitalization.None, autoCorrectEnabled = Prefs.autoCorrect),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 280.dp).ruled(Prefs.ruled, c.line, 17f * Prefs.fontScale * Prefs.lineHeight).focusRequester(bodyFocus),
                 decorationBox = { inner ->
                     if (body.text.isEmpty()) Text(e.question.ifBlank { "Bugün neler oldu? Aklından geçenleri yaz…" }, style = writingStyle().copy(color = c.faint))
                     inner()
                 },
             )
             // medya
-            if (e.media.isNotEmpty() && !focus) {
+            val inl = e.inlineFiles
+            val inlineMedia = e.media.filter { it.file in inl }
+            val other = e.media.filter { it.file !in inl }
+            if (inlineMedia.isNotEmpty() && !focus) {
                 Spacer(Modifier.height(12.dp))
-                MediaStrip(e.media, onRemove = { m -> update { it.copy(media = it.media - m) } })
+                Text("Metindeki fotoğraflar", color = c.faint, style = MaterialTheme.typography.labelMedium)
+                Spacer(Modifier.height(6.dp))
+                MediaStrip(inlineMedia, small = true)
+            }
+            if (other.isNotEmpty() && !focus) {
+                Spacer(Modifier.height(12.dp))
+                MediaStrip(other, onRemove = { m -> update { it.copy(media = it.media - m) } })
             }
             Spacer(Modifier.height(80.dp))
         }
@@ -322,6 +360,10 @@ fun EditorScreen(r: Route.Editor) {
         if (!focus) {
             Row(Modifier.fillMaxWidth().background(c.card).navigationBarsPadding().padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                    Tool(Icons.AutoMirrored.Rounded.Undo, "Geri al", if (undo.isEmpty()) c.faint else null) { undoOnce() }
+                    Tool(Icons.AutoMirrored.Rounded.Redo, "Yinele", if (redo.isEmpty()) c.faint else null) { redoOnce() }
+                    VerticalDivider(Modifier.height(24.dp).padding(horizontal = 4.dp), color = c.line)
+                    Tool(Icons.Rounded.Title, "Başlık") { prefix("## ") }
                     Tool(Icons.Rounded.FormatBold, "Kalın") { wrap("**") }
                     Tool(Icons.Rounded.FormatItalic, "İtalik") { wrap("*") }
                     Tool(Icons.Rounded.BorderColor, "Vurgula") { wrap("==") }
@@ -334,7 +376,9 @@ fun EditorScreen(r: Route.Editor) {
                         val ins = (if (pre.isEmpty() || pre.endsWith(" ") || pre.endsWith("\n")) "" else " ") + "#"
                         setBody(TextFieldValue(pre + ins + v.text.substring(at), TextRange(at + ins.length)))
                     }
+                    Tool(Icons.Rounded.AlternateEmail, "Kişi") { insertAtCursor("@") }
                     VerticalDivider(Modifier.height(24.dp).padding(horizontal = 4.dp), color = c.line)
+                    Tool(Icons.Rounded.AddPhotoAlternate, "Metne fotoğraf") { Lock.suppress = true; inlinePhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                     Tool(Icons.Rounded.Image, "Fotoğraf") { Lock.suppress = true; photos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                     Tool(Icons.Rounded.Videocam, "Video") { Lock.suppress = true; video.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) }
                     Tool(Icons.Rounded.Mic, "Ses notu", if (recorder != null) c.danger else null) {
@@ -342,6 +386,7 @@ fun EditorScreen(r: Route.Editor) {
                         else { micPerm.launch(Manifest.permission.RECORD_AUDIO) }
                     }
                     Tool(Icons.Rounded.KeyboardVoice, "Konuşarak yaz") { dictate() }
+                    Tool(Icons.Rounded.RecordVoiceOver, "Sesli not + yazı") { dictate(keepAudio = true) }
                     Tool(if (locBusy) Icons.Rounded.HourglassTop else Icons.Rounded.MyLocation, "Konum ve hava") {
                         if (MediaKit.hasLocation(ctx)) addLocation() else { locPerm.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION)) }
                     }
@@ -429,7 +474,9 @@ fun DetailsSheet(e: Entry, onChange: ((Entry) -> Entry) -> Unit, onLocation: () 
     Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
         Text("Ruh hâli", style = MaterialTheme.typography.titleMedium, color = c.text)
         Spacer(Modifier.height(10.dp))
-        MoodPicker(e.mood, compact = true) { k -> onChange { it.copy(mood = k) } }
+        Text("Birden fazla seçebilirsin; ilk seçtiğin ana ruh hâli olur.", color = c.sub, style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.height(8.dp))
+        MoodMultiPicker(e.moods, compact = true) { l -> onChange { it.copy(mood = l.firstOrNull(), extraMoods = l.drop(1)) } }
         Spacer(Modifier.height(20.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Enerji", style = MaterialTheme.typography.titleMedium, color = c.text, modifier = Modifier.weight(1f))
@@ -483,7 +530,7 @@ fun DetailsSheet(e: Entry, onChange: ((Entry) -> Entry) -> Unit, onLocation: () 
 }
 
 @Composable
-fun MediaStrip(media: List<Media>, onRemove: ((Media) -> Unit)? = null) {
+fun MediaStrip(media: List<Media>, onRemove: ((Media) -> Unit)? = null, small: Boolean = false) {
     val c = Iz.c
     val ctx = LocalContext.current
     var playing by remember { mutableStateOf<String?>(null) }
@@ -492,7 +539,7 @@ fun MediaStrip(media: List<Media>, onRemove: ((Media) -> Unit)? = null) {
     if (visual.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         items(visual) { m ->
             Box {
-                Thumb(m, Modifier.size(if (visual.size == 1) 220.dp else 130.dp).clickable { MediaKit.open(ctx, m) })
+                Thumb(m, Modifier.size(if (small) 64.dp else if (visual.size == 1) 220.dp else 130.dp).clickable { MediaKit.open(ctx, m) })
                 if (onRemove != null) Box(Modifier.align(Alignment.TopEnd).padding(6.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f)).clickable { onRemove(m) }.padding(4.dp)) {
                     Icon(Icons.Rounded.Close, "Kaldır", tint = Color.White, modifier = Modifier.size(16.dp))
                 }

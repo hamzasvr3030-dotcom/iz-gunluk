@@ -9,15 +9,38 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.em
 
 /**
  * Hafif biçimlendirme dili:
- *  **kalın**   *italik*   ==vurgu==   satır başında "- " madde, "1. " numara, "> " alıntı, "[ ] " / "[x] " yapılacak.
+ *  **kalın**   *italik*   ==vurgu==   satır başında "## " başlık, "- " madde, "1. " numara, "> " alıntı,
+ *  "[ ] " / "[x] " yapılacak, tek başına "[[foto:dosya.jpg]]" satırı metin içi fotoğraf.
  * Metin düz yazı olarak saklanır; böylece yedekler her yerde okunabilir kalır.
  */
 object RichText {
     private val inline = Regex("""\*\*(.+?)\*\*|==(.+?)==|(?<![*\w])\*(?!\s)([^*\n]+?)(?<!\s)\*(?![*\w])""")
     private val tag = Regex("(?<![\\p{L}\\p{N}_])#[\\p{L}\\p{N}_]{2,40}")
+    private val person = Regex("(?<![\\p{L}\\p{N}_.])@[\\p{L}\\p{N}_]{2,30}")
+    private val photo = Regex("^\\[\\[foto:([\\w.\\-]+)]]$")
+
+    fun photoToken(file: String) = "[[foto:$file]]"
+    fun inlinePhotos(s: String): List<String> = s.lines().mapNotNull { photo.find(it.trim())?.groupValues?.get(1) }
+
+    sealed interface Block
+    data class TextBlock(val text: String) : Block
+    data class PhotoBlock(val file: String) : Block
+
+    /** Okuma görünümü için metni yazı ve fotoğraf bloklarına böler. */
+    fun blocks(s: String): List<Block> {
+        val out = ArrayList<Block>(); val buf = ArrayList<String>()
+        fun flush() { if (buf.isNotEmpty()) { val t = buf.joinToString("\n").trim('\n'); if (t.isNotBlank()) out += TextBlock(t); buf.clear() } }
+        for (l in s.lines()) {
+            val m = photo.find(l.trim())
+            if (m != null) { flush(); out += PhotoBlock(m.groupValues[1]) } else buf += l
+        }
+        flush()
+        return out
+    }
 
     data class Span(val start: Int, val end: Int, val kind: Char)   // kind: b, i, h, m (işaret)
 
@@ -39,29 +62,33 @@ object RichText {
     }
 
     private fun lineKind(line: String): Pair<String, Int>? = when {
+        line.startsWith("## ") -> "head" to 3
         line.startsWith("- ") || line.startsWith("• ") -> "bullet" to 2
         line.startsWith("> ") -> "quote" to 2
         line.startsWith("[ ] ") -> "todo" to 4
         line.startsWith("[x] ") || line.startsWith("[X] ") -> "done" to 4
+        photo.matches(line.trim()) -> "photo" to 0
         else -> Regex("^(\\d{1,3})\\. ").find(line)?.let { "num" to 0 }
     }
 
     /** İşaretsiz düz metin (arama, sayaç, dışa aktarma için). */
-    fun plain(s: String): String = s.lines().joinToString("\n") { line ->
+    fun plain(s: String): String = s.lines().mapNotNull { line ->
         val lk = lineKind(line)
         val l = when (lk?.first) {
+            "head" -> line.drop(3)
             "bullet" -> "• " + line.drop(2)
             "quote" -> "“" + line.drop(2) + "”"
             "todo" -> "☐ " + line.drop(4)
             "done" -> "☑ " + line.drop(4)
+            "photo" -> null
             else -> line
         }
-        inline.replace(l) { it.groups[1]?.value ?: it.groups[2]?.value ?: it.groups[3]?.value ?: "" }
-    }
+        l?.let { x -> inline.replace(x) { it.groups[1]?.value ?: it.groups[2]?.value ?: it.groups[3]?.value ?: "" } }
+    }.joinToString("\n")
 
-    /** Okuma görünümü: işaretler gizlenir. */
+    /** Okuma görünümü: işaretler gizlenir. Fotoğraf satırları atlanır (bloklarla gösterilir). */
     fun render(s: String, accent: Color, muted: Color, highlight: Color, query: String = ""): AnnotatedString = buildAnnotatedString {
-        val lines = s.lines()
+        val lines = s.lines().filter { lineKind(it)?.first != "photo" }
         lines.forEachIndexed { idx, raw ->
             val lk = lineKind(raw)
             val lineStart = length
@@ -69,14 +96,17 @@ object RichText {
                 "bullet" -> { pushStyle(SpanStyle(color = accent, fontWeight = FontWeight.Bold)); append("•  "); pop(); raw.drop(2) }
                 "todo" -> { pushStyle(SpanStyle(color = muted)); append("○  "); pop(); raw.drop(4) }
                 "done" -> { pushStyle(SpanStyle(color = accent)); append("●  "); pop(); raw.drop(4) }
-                "quote" -> raw.drop(2)
+                "quote", "head" -> raw.drop(lk.second)
                 "num" -> { val n = raw.substringBefore(". "); pushStyle(SpanStyle(color = accent, fontWeight = FontWeight.Bold)); append("$n.  "); pop(); raw.substringAfter(". ") }
                 else -> raw
             }
-            val quote = lk?.first == "quote"
-            val done = lk?.first == "done"
-            if (quote) pushStyle(SpanStyle(fontStyle = FontStyle.Italic, color = muted))
-            if (done) pushStyle(SpanStyle(color = muted))
+            val wrap = when (lk?.first) {
+                "quote" -> SpanStyle(fontStyle = FontStyle.Italic, color = muted)
+                "done" -> SpanStyle(color = muted)
+                "head" -> SpanStyle(fontWeight = FontWeight.Bold, fontSize = 1.3.em)
+                else -> null
+            }
+            if (wrap != null) pushStyle(wrap)
             var i = 0
             for (m in inline.findAll(content)) {
                 appendTagged(content.substring(i, m.range.first), accent)
@@ -89,8 +119,7 @@ object RichText {
                 i = m.range.last + 1
             }
             appendTagged(content.substring(i), accent)
-            if (done) pop()
-            if (quote) pop()
+            if (wrap != null) pop()
             if (query.isNotBlank()) {
                 val seg = toAnnotatedString().text.substring(lineStart)
                 for (p in Text.findAll(seg, query)) addStyle(SpanStyle(background = highlight.copy(alpha = 0.9f)), lineStart + p, lineStart + p + query.length)
@@ -100,8 +129,10 @@ object RichText {
     }
 
     private fun AnnotatedString.Builder.appendTagged(s: String, accent: Color) {
+        val ms = (tag.findAll(s) + person.findAll(s)).sortedBy { it.range.first }.toList()
         var i = 0
-        for (m in tag.findAll(s)) {
+        for (m in ms) {
+            if (m.range.first < i) continue
             append(s.substring(i, m.range.first))
             pushStyle(SpanStyle(color = accent, fontWeight = FontWeight.Medium)); append(m.value); pop()
             i = m.range.last + 1
@@ -124,12 +155,18 @@ object RichText {
                 var off = 0
                 for (line in s.split('\n')) {
                     val lk = lineKind(line)
-                    if (lk != null && lk.second > 0) addStyle(SpanStyle(color = accent, fontWeight = FontWeight.Bold), off, off + lk.second)
-                    if (lk?.first == "num") { val n = line.indexOf(". ") + 2; addStyle(SpanStyle(color = accent, fontWeight = FontWeight.Bold), off, off + n) }
-                    if (lk?.first == "quote") addStyle(SpanStyle(fontStyle = FontStyle.Italic), off, off + line.length)
+                    when (lk?.first) {
+                        "head" -> { addStyle(SpanStyle(color = marker), off, off + 3); addStyle(SpanStyle(fontWeight = FontWeight.Bold, fontSize = 1.3.em), off + 3, off + line.length) }
+                        "photo" -> addStyle(SpanStyle(color = marker, fontSize = 0.8.em, fontStyle = FontStyle.Italic), off, off + line.length)
+                        "num" -> { val n = line.indexOf(". ") + 2; addStyle(SpanStyle(color = accent, fontWeight = FontWeight.Bold), off, off + n) }
+                        "quote" -> { addStyle(SpanStyle(color = accent, fontWeight = FontWeight.Bold), off, off + 2); addStyle(SpanStyle(fontStyle = FontStyle.Italic), off, off + line.length) }
+                        null -> {}
+                        else -> addStyle(SpanStyle(color = accent, fontWeight = FontWeight.Bold), off, off + lk.second)
+                    }
                     off += line.length + 1
                 }
                 for (m in tag.findAll(s)) addStyle(SpanStyle(color = accent), m.range.first, m.range.last + 1)
+                for (m in person.findAll(s)) addStyle(SpanStyle(color = accent), m.range.first, m.range.last + 1)
                 if (query.isNotBlank()) for (p in Text.findAll(s, query)) addStyle(SpanStyle(background = highlight.copy(alpha = 0.95f), color = Color.Black), p, p + query.length)
             }
             return TransformedText(out, OffsetMapping.Identity)

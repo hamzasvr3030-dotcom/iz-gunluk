@@ -41,7 +41,14 @@ data class Entry(
     val hidden: Boolean = false,
     val template: String = "",
     val question: String = "",
+    /** Ana ruh hâline ek olarak seçilen diğer duygular. */
+    val extraMoods: List<String> = emptyList(),
 ) {
+    val moods: List<String> get() = listOfNotNull(mood) + extraMoods
+    /** Metin içindeki @kişi etiketleri. */
+    val people: List<String> get() = Text.people(body)
+    /** Metnin içine yerleştirilmiş fotoğraflar. */
+    val inlineFiles: Set<String> get() = RichText.inlinePhotos(body).toSet()
     val date: LocalDate get() = LocalDate.ofEpochDay(day)
     val plain: String get() = RichText.plain(body)
     val words: Int get() = Text.words(plain)
@@ -55,7 +62,7 @@ data class Entry(
         .put("title", title).put("body", body).put("mood", mood ?: JSONObject.NULL).put("energy", energy)
         .put("tags", JSONArray(tags)).put("media", JSONArray(media.map { it.json() }))
         .put("place", place).put("lat", lat ?: JSONObject.NULL).put("lon", lon ?: JSONObject.NULL)
-        .put("weather", weather).put("fav", fav).put("hidden", hidden).put("template", template).put("question", question)
+        .put("weather", weather).put("fav", fav).put("hidden", hidden).put("template", template).put("question", question).put("extraMoods", JSONArray(extraMoods))
 
     companion object {
         fun from(o: JSONObject): Entry {
@@ -70,6 +77,7 @@ data class Entry(
                 lon = if (o.isNull("lon") || !o.has("lon")) null else o.getDouble("lon"),
                 weather = o.optString("weather"), fav = o.optBoolean("fav"), hidden = o.optBoolean("hidden"),
                 template = o.optString("template"), question = o.optString("question"),
+                extraMoods = o.optJSONArray("extraMoods")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList(),
             )
         }
     }
@@ -117,6 +125,8 @@ object Codec {
 
 object Text {
     private val tagRx = Regex("(?<![\\p{L}\\p{N}_])#([\\p{L}\\p{N}_]{2,40})")
+    private val personRx = Regex("(?<![\\p{L}\\p{N}_.])@([\\p{L}\\p{N}_]{2,30})")
+    fun people(s: String): List<String> = personRx.findAll(s).map { it.groupValues[1] }.distinctBy { fold(it) }.toList()
     private val wordRx = Regex("[\\p{L}\\p{N}']+")
 
     fun hashtags(s: String): List<String> = tagRx.findAll(s).map { it.groupValues[1] }.toList()

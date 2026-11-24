@@ -12,6 +12,7 @@ import android.net.Uri
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
+import androidx.compose.ui.graphics.toArgb
 import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -30,8 +31,24 @@ object Backup {
     fun stamp(): String = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
 
     private fun json(entries: List<Entry>, letters: List<Letter>) = JSONObject()
-        .put("app", "iz").put("format", 1).put("exported", System.currentTimeMillis())
+        .put("app", "iz").put("format", 2).put("exported", System.currentTimeMillis())
         .put("entries", Codec.entriesToJson(entries)).put("letters", Codec.lettersToJson(letters))
+        .put("habits", Habits.toJson()).put("customMoods", JSONArray(Moods.customJson()))
+
+    sealed interface ImportResult {
+        data class Ok(val n: Int) : ImportResult
+        data object NeedPass : ImportResult
+        data object WrongPass : ImportResult
+        data object Fail : ImportResult
+    }
+
+    private fun size(ctx: Context, uri: Uri): Long =
+        runCatching { ctx.contentResolver.openFileDescriptor(uri, "r")!!.use { it.statSize } }.getOrDefault(-1L)
+
+    /** Parola verilmişse ZIP'i şifreleyerek yazar (.izb). */
+    private fun writeBackup(out: OutputStream, pass: String) {
+        if (pass.isEmpty()) writeZip(out) else writeZip(BackupCrypto.encrypting(out, pass))
+    }
 
     /** Tam yedek: veriler + tüm medya dosyaları tek ZIP içinde. */
     fun writeZip(out: OutputStream) {
@@ -46,8 +63,8 @@ object Backup {
         }
     }
 
-    suspend fun exportZip(ctx: Context, uri: Uri): Boolean = withContext(Dispatchers.IO) {
-        runCatching { ctx.contentResolver.openOutputStream(uri, "wt")!!.use { writeZip(it) } }.isSuccess
+    suspend fun exportZip(ctx: Context, uri: Uri, pass: String = Prefs.backupPass): Boolean = withContext(Dispatchers.IO) {
+        runCatching { ctx.contentResolver.openOutputStream(uri, "wt")!!.use { writeBackup(it, pass) } }.isSuccess
     }
 
     suspend fun exportJson(ctx: Context, uri: Uri, list: List<Entry>): Boolean = withContext(Dispatchers.IO) {
@@ -75,22 +92,37 @@ object Backup {
     }
 
     /** ZIP veya JSON yedeğini içe aktarır, mevcut verilerle birleştirir. Dönen: eklenen/ güncellenen girdi sayısı. */
-    suspend fun import(ctx: Context, uri: Uri): Int? = withContext(Dispatchers.IO) {
+    suspend fun import(ctx: Context, uri: Uri, pass: String? = null): ImportResult = withContext(Dispatchers.IO) {
         try {
-            val head = ctx.contentResolver.openInputStream(uri)!!.use { s -> ByteArray(2).let { b -> b.copyOf(maxOf(0, s.read(b))) } }
+            val head = ctx.contentResolver.openInputStream(uri)!!.use { s -> ByteArray(4).let { b -> b.copyOf(maxOf(0, s.read(b))) } }
             var root: JSONObject? = null
-            if (head.size == 2 && head[0] == 'P'.code.toByte() && head[1] == 'K'.code.toByte()) {
+            if (head.contentEquals(BackupCrypto.MAGIC)) {
+                if (pass.isNullOrEmpty()) return@withContext ImportResult.NeedPass
+                val total = size(ctx, uri)
+                if (total <= 0) return@withContext ImportResult.Fail
+                if (!BackupCrypto.verify(ctx.contentResolver.openInputStream(uri)!!, total, pass)) return@withContext ImportResult.WrongPass
+                BackupCrypto.decrypting(ctx.contentResolver.openInputStream(uri)!!, total, pass).use { root = readZip(it) }
+            } else if (head.size >= 2 && head[0] == 'P'.code.toByte() && head[1] == 'K'.code.toByte()) {
                 ctx.contentResolver.openInputStream(uri)!!.use { root = readZip(it) }
             } else {
                 val s = ctx.contentResolver.openInputStream(uri)!!.use { it.readBytes().decodeToString() }
                 root = if (s.trimStart().startsWith("[")) JSONObject().put("entries", JSONArray(s)) else JSONObject(s)
             }
-            val r = root ?: return@withContext null
+            val r = root ?: return@withContext ImportResult.Fail
             val es = r.optJSONArray("entries")?.let { Codec.entriesFrom(it.toString()) } ?: emptyList()
             val ls = r.optJSONArray("letters")?.let { Codec.lettersFrom(it.toString()) } ?: emptyList()
-            withContext(Dispatchers.Main) { Store.importAll(es, ls) }
-            es.size
-        } catch (_: Exception) { null }
+            withContext(Dispatchers.Main) {
+                r.optJSONArray("customMoods")?.let { a ->
+                    val before = Moods.custom.map { it.key }.toSet()
+                    val keep = Moods.custom.toList()
+                    Moods.loadCustom(a.toString())
+                    val incoming = Moods.custom.filter { it.key !in before }
+                    Moods.custom.clear(); Moods.custom.addAll(keep + incoming); Prefs.save()
+                }
+                Store.importAll(es, ls, r.optJSONObject("habits"))
+            }
+            ImportResult.Ok(es.size)
+        } catch (_: Exception) { ImportResult.Fail }
     }
 
     private fun readZip(input: InputStream): JSONObject? {
@@ -118,10 +150,11 @@ object Backup {
         if (!force && System.currentTimeMillis() - Prefs.lastAutoBackup < 20 * 3600_000L) return@withContext false
         try {
             val dir = DocumentFile.fromTreeUri(ctx, Uri.parse(u)) ?: return@withContext false
-            val name = "Iz-yedek-${stamp()}.zip"
+            val pass = Prefs.backupPass
+            val name = "Iz-yedek-${stamp()}." + if (pass.isEmpty()) "zip" else "izb"
             dir.findFile(name)?.delete()
-            val f = dir.createFile("application/zip", name) ?: return@withContext false
-            ctx.contentResolver.openOutputStream(f.uri, "wt")!!.use { writeZip(it) }
+            val f = dir.createFile(if (pass.isEmpty()) "application/zip" else "application/octet-stream", name) ?: return@withContext false
+            ctx.contentResolver.openOutputStream(f.uri, "wt")!!.use { writeBackup(it, pass) }
             // en fazla 7 otomatik yedek tut
             dir.listFiles().filter { it.name?.startsWith("Iz-yedek-") == true }.sortedByDescending { it.name }.drop(7).forEach { it.delete() }
             withContext(Dispatchers.Main) { Prefs.lastAutoBackup = System.currentTimeMillis(); Prefs.save() }
@@ -171,7 +204,10 @@ object Backup {
         fun write(out: OutputStream) {
             // kapak
             newPage()
-            cv.drawColor(Color.rgb(10, 14, 23))
+            val cc = Covers.colors(Prefs.cover)
+            cv.drawRect(0f, 0f, W.toFloat(), H.toFloat(), Paint().apply {
+                shader = android.graphics.LinearGradient(0f, 0f, W.toFloat(), H.toFloat(), cc[0].toArgb(), Color.rgb(10, 14, 23), android.graphics.Shader.TileMode.CLAMP)
+            })
             val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(47, 123, 255) }
             cv.drawRect(M, 200f, M + 40f, 204f, p)
             val big = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textSize = 30f; typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD) }

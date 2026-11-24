@@ -20,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -79,28 +80,51 @@ fun MoodBadge(m: Mood, size: Dp = 36.dp, selected: Boolean = true) {
     }
 }
 
+/** Tek seçim (ana ruh hâli) için kısayol. */
 @Composable
-fun MoodPicker(selected: String?, compact: Boolean = false, onPick: (String?) -> Unit) {
+fun MoodPicker(selected: String?, compact: Boolean = false, onPick: (String?) -> Unit) =
+    MoodMultiPicker(listOfNotNull(selected), compact, multi = false) { onPick(it.firstOrNull()) }
+
+/** Çoklu seçim: ilk seçilen ana ruh hâlidir ("ana" rozeti), diğerleri ek duygulardır. */
+@Composable
+fun MoodMultiPicker(selected: List<String>, compact: Boolean = false, multi: Boolean = true, onChange: (List<String>) -> Unit) {
     val c = Iz.c
     @OptIn(ExperimentalLayoutApi::class)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         for (m in Moods.all) {
-            val on = m.key == selected
-            Column(
-                Modifier.width(if (compact) 58.dp else 64.dp).clip(RoundS)
-                    .background(if (on) m.color.copy(alpha = 0.16f) else Color.Transparent)
-                    .border(1.dp, if (on) m.color.copy(alpha = 0.7f) else c.line, RoundS)
-                    .clickable { onPick(if (on) null else m.key) }.padding(vertical = 8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Icon(m.icon, null, tint = if (on || selected == null) m.color else m.color.copy(alpha = 0.45f), modifier = Modifier.size(24.dp))
-                Spacer(Modifier.height(4.dp))
-                Text(m.label, style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 0.sp), color = if (on) c.text else c.sub, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val idx = selected.indexOf(m.key)
+            val on = idx >= 0
+            Box {
+                Column(
+                    Modifier.width(if (compact) 58.dp else 64.dp).clip(RoundS)
+                        .background(if (on) m.color.copy(alpha = 0.16f) else Color.Transparent)
+                        .border(1.dp, if (on) m.color.copy(alpha = 0.7f) else c.line, RoundS)
+                        .clickable {
+                            onChange(when {
+                                on -> selected - m.key
+                                multi -> selected + m.key
+                                else -> listOf(m.key)
+                            })
+                        }.padding(vertical = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Icon(m.icon, null, tint = if (on || selected.isEmpty()) m.color else m.color.copy(alpha = 0.45f), modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.height(4.dp))
+                    Text(m.label, style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 0.sp), color = if (on) c.text else c.sub, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                if (multi && idx == 0 && selected.size > 1) Text("ana", color = c.onAccent, style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.sp),
+                    modifier = Modifier.align(Alignment.TopEnd).offset(x = 4.dp, y = (-4).dp).clip(CircleShape).background(m.color).padding(horizontal = 5.dp, vertical = 1.dp))
             }
         }
     }
 }
 
+/** Çizgili kâğıt: yazı satırlarının altına ince çizgiler. */
+fun Modifier.ruled(enabled: Boolean, color: Color, lineHeightSp: Float, topPx: Float = 0f): Modifier = if (!enabled) this else this.drawBehind {
+    val lh = lineHeightSp * density * fontScale
+    var y = topPx + lh - lh * 0.18f
+    while (y < size.height) { drawLine(color, androidx.compose.ui.geometry.Offset(0f, y), androidx.compose.ui.geometry.Offset(size.width, y), 1.2f); y += lh }
+}
 
 @Composable
 fun BackBar(title: String = "", onBack: () -> Unit, actions: @Composable RowScope.() -> Unit = {}) {
@@ -155,6 +179,7 @@ fun EntryCard(e: Entry, showDate: Boolean = true, query: String = "", onClick: (
                 if (e.hidden) Icon(Icons.Rounded.Lock, null, tint = c.sub, modifier = Modifier.size(14.dp))
                 if (e.fav) Icon(Icons.Rounded.Favorite, null, tint = Color(0xFFFF5C8A), modifier = Modifier.size(14.dp).padding(start = 2.dp))
                 if (mood != null) { Spacer(Modifier.width(6.dp)); MoodBadge(mood, 24.dp) }
+                e.extraMoods.mapNotNull { Moods[it] }.take(2).forEach { Spacer(Modifier.width(2.dp)); MoodBadge(it, 20.dp) }
             }
             Spacer(Modifier.height(6.dp))
             val title = e.title.ifBlank { mood?.let { "${it.label} bir gün" } ?: "Başlıksız" }
@@ -170,6 +195,7 @@ fun EntryCard(e: Entry, showDate: Boolean = true, query: String = "", onClick: (
                 e.media.count { it.isAudio }.takeIf { it > 0 }?.let { "$it ses" },
                 e.media.count { it.isVideo }.takeIf { it > 0 }?.let { "$it video" },
                 "${e.words} kelime".takeIf { e.words > 0 },
+                e.people.take(2).joinToString(" ") { "@$it" }.takeIf { it.isNotEmpty() },
             )
             if (e.allTags.isNotEmpty() || meta.isNotEmpty()) {
                 Spacer(Modifier.height(8.dp))

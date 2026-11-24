@@ -53,9 +53,11 @@ fun ListScreen() {
 
     val all = Store.visible().filter { !it.isEmpty }
     val tags = remember(Store.version) { all.flatMap { it.allTags }.groupingBy { it }.eachCount().toList().sortedByDescending { it.second }.map { it.first } }
+    val people = remember(Store.version) { all.flatMap { it.people }.groupingBy { it }.eachCount().toList().sortedByDescending { it.second }.map { it.first } }
     val list = all.filter { e ->
         (q.isBlank() || Text.fold(e.title + "\n" + e.plain + "\n" + e.place + "\n" + e.allTags.joinToString(" ")).contains(Text.fold(q))) &&
-            (Nav.listMood == null || e.mood == Nav.listMood) &&
+            (Nav.listMood == null || Nav.listMood in e.moods) &&
+            (Nav.listPerson == null || e.people.any { Text.fold(it) == Text.fold(Nav.listPerson!!) }) &&
             (Nav.listTag == null || Nav.listTag in e.allTags) &&
             (!favOnly || e.fav) && (!mediaOnly || e.media.isNotEmpty()) &&
             (range == null || e.day in range!!.first..range!!.second)
@@ -100,9 +102,15 @@ fun ListScreen() {
                         items(tags) { t -> Pill("#$t", Nav.listTag == t) { Nav.listTag = if (Nav.listTag == t) null else t } }
                     }
                 }
+                if (people.isNotEmpty() || Nav.listPerson != null) {
+                    Spacer(Modifier.height(8.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items((listOfNotNull(Nav.listPerson) + people).distinct()) { pp -> Pill("@$pp", Nav.listPerson == pp, Icons.Rounded.Person) { Nav.listPerson = if (Nav.listPerson == pp) null else pp } }
+                    }
+                }
                 if (all.isEmpty()) EmptyState(Icons.Rounded.EditNote, "Henüz bir şey yazmadın", "İlk satırın, yıllar sonra okuyacağın bir anının başlangıcı olacak.", "İlk günlüğünü yaz") { Nav.write() }
                 else if (list.isEmpty()) EmptyState(Icons.Rounded.SearchOff, "Eşleşen kayıt yok", "Filtreleri değiştirmeyi dene.")
-                else if (q.isNotBlank() || Nav.listMood != null || Nav.listTag != null || favOnly || mediaOnly || range != null)
+                else if (q.isNotBlank() || Nav.listMood != null || Nav.listTag != null || Nav.listPerson != null || favOnly || mediaOnly || range != null)
                     Text("${list.size} sonuç", color = c.sub, modifier = Modifier.padding(top = 12.dp), style = MaterialTheme.typography.bodyMedium)
             }
             grouped.forEach { (ym, es) ->
@@ -130,7 +138,7 @@ fun ListScreen() {
             DateRangePicker(st, Modifier.weight(1f), title = { Text("Tarih aralığı seç", Modifier.padding(16.dp)) })
         }
     }
-    if (auth) AuthScreen("Gizli kayıtlar", "Gizli kayıtları göstermek için doğrula", onCancel = { auth = false }) { Lock.hiddenOpen = true; auth = false }
+    if (auth) AuthScreen("Gizli kayıtlar", "Gizli kayıtları göstermek için doğrula", mode = AuthMode.Hidden, onCancel = { auth = false }) { Lock.hiddenOpen = true; auth = false }
 }
 
 // ============================ Takvim ============================

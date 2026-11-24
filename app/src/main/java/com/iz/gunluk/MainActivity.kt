@@ -42,6 +42,7 @@ sealed interface Route {
     data class LetterRead(val id: String) : Route
     data class Summary(val from: Long, val to: Long, val title: String) : Route
     data object Map : Route
+    data object Trash : Route
 }
 
 object Nav {
@@ -51,6 +52,7 @@ object Nav {
     var listQuery by mutableStateOf("")
     var listTag by mutableStateOf<String?>(null)
     var listMood by mutableStateOf<String?>(null)
+    var listPerson by mutableStateOf<String?>(null)
     var toast by mutableStateOf<String?>(null)
     val top get() = stack.last()
     fun go(r: Route) { stack.add(r) }
@@ -104,6 +106,7 @@ class MainActivity : FragmentActivity() {
     private fun handle(i: Intent?) {
         when (i?.getStringExtra("open") ?: return) {
             "write" -> { Nav.home(); Nav.go(Route.Editor()) }
+            "voice" -> { Nav.home(); Nav.go(Route.Editor(template = "_voice")) }
             "memories" -> { Nav.home(); Nav.tab = 3; Nav.memTab = 4 }
             "letters" -> { Nav.home(); Nav.tab = 3; Nav.memTab = 2 }
             "home" -> { Nav.home(); Nav.tab = 0 }
@@ -147,9 +150,11 @@ fun Root(update: Updater.Rel?, dismissUpdate: () -> Unit) {
                 is Route.LetterRead -> LetterReadScreen(r.id)
                 is Route.Summary -> SummaryScreen(r)
                 Route.Map -> MapScreen()
+                Route.Trash -> TrashScreen()
             }
         }
         update?.let { UpdateDialog(it, dismissUpdate) }
+        LockOffer()
         Nav.toast?.let { msg ->
             LaunchedEffect(msg) { kotlinx.coroutines.delay(2200); Nav.toast = null }
             Box(Modifier.fillMaxSize().navigationBarsPadding().padding(bottom = 96.dp), contentAlignment = Alignment.BottomCenter) {
@@ -239,3 +244,26 @@ fun UpdateDialog(r: Updater.Rel, dismiss: () -> Unit) {
 }
 
 fun todayKey() = LocalDate.now().toEpochDay()
+
+/** İlk açılışta bir kez: günlüğü 6 haneli PIN ve parmak iziyle kilitlemeyi öner. */
+@Composable
+fun LockOffer() {
+    val c = Iz.c
+    val act = LocalContext.current as? FragmentActivity
+    var setup by remember { mutableStateOf(false) }
+    if (Prefs.lockAsked || Lock.enabled || Store.decoy) { if (!Prefs.lockAsked && Lock.enabled) { Prefs.lockAsked = true; Prefs.save() }; return }
+    fun done() { Prefs.lockAsked = true; Prefs.save() }
+    if (setup) {
+        PinSetup("6 haneli PIN belirle", "Uygulamayı açarken sorulacak", onCancel = { setup = false; done() }) { p ->
+            Lock.set("pin", p); done(); setup = false
+            if (act != null && Lock.canBiometric(act)) Lock.biometric(act, "Parmak izini de ekle") { Prefs.biometric = true; Prefs.save(); Nav.toast = "PIN ve parmak izi açık" }
+            Nav.toast = "Günlüğün kilitlendi"
+        }
+        return
+    }
+    AlertDialog(onDismissRequest = { done() }, icon = { Icon(Icons.Rounded.Lock, null, tint = c.accent) },
+        title = { Text("Günlüğünü kilitle") },
+        text = { Text("İz'i 6 haneli bir PIN ve parmak iziyle koruyabilirsin. Yazıların zaten cihazda şifreli tutuluyor; kilit, telefonunu başkası açtığında da güvende olmalarını sağlar.") },
+        confirmButton = { TextButton(onClick = { setup = true }) { Text("PIN oluştur") } },
+        dismissButton = { TextButton(onClick = { done() }) { Text("Şimdi değil") } })
+}
