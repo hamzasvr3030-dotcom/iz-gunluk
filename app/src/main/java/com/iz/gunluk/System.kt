@@ -83,7 +83,7 @@ object Reminders {
                 Prefs.putLong("memNotified", todayKey)
             }
         }
-        for (l in Store.letters.filter { it.openDay <= todayKey && !it.read }) {
+        for (l in Store.letters.filter { it.isOpen(todayKey) && !it.read }) {
             if (Prefs.str("letterNotified").contains(l.id)) continue
             notify(ctx, 20 + (l.id.hashCode() and 0xfff), "Geçmişten bir mektubun var", "“${l.title.ifBlank { "Mektup" }}” bugün açıldı. ${Tr.long(java.time.Instant.ofEpochMilli(l.written).atZone(ZoneId.systemDefault()).toLocalDate())} tarihinde yazmıştın.", "letters")
             Prefs.putStr("letterNotified", Prefs.str("letterNotified") + "," + l.id)
@@ -100,7 +100,7 @@ class ReminderReceiver : BroadcastReceiver() {
 }
 
 class BootReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) { Reminders.schedule(context); IzWidget.update(context) }
+    override fun onReceive(context: Context, intent: Intent) { Reminders.schedule(context); QuickMood.schedule(context); Capsules.register(context); IzWidget.update(context) }
 }
 
 // ============================ Ana ekran widget'ı ============================

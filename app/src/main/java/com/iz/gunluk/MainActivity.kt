@@ -34,7 +34,14 @@ import java.time.LocalDate
 
 sealed interface Route {
     data object Tabs : Route
-    data class Editor(val id: String? = null, val day: Long? = null, val template: String? = null, val question: String? = null) : Route
+    data class Editor(val id: String? = null, val day: Long? = null, val template: String? = null, val question: String? = null, val draft: String? = null, val draftMood: Int = 0, val draftSource: String = "") : Route
+    data object Entries : Route
+    data class Person(val name: String) : Route
+    data object Places : Route
+    data class PlaceR(val name: String) : Route
+    data class Year(val year: Int) : Route
+    data object Weekly : Route
+    data class Versions(val id: String) : Route
     data class Reader(val id: String) : Route
     data class Day(val day: Long) : Route
     data object Settings : Route
@@ -48,7 +55,7 @@ sealed interface Route {
 object Nav {
     val stack = mutableStateListOf<Route>(Route.Tabs)
     var tab by mutableIntStateOf(0)
-    var memTab by mutableIntStateOf(0)
+    var memTab by mutableIntStateOf(6)
     var listQuery by mutableStateOf("")
     var listTag by mutableStateOf<String?>(null)
     var listMood by mutableStateOf<String?>(null)
@@ -91,6 +98,7 @@ class MainActivity : FragmentActivity() {
                 LaunchedEffect(dark) {
                     WindowCompat.getInsetsController(window, window.decorView).run { isAppearanceLightStatusBars = !dark; isAppearanceLightNavigationBars = !dark }
                 }
+                LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(60_000); Night.tick++ } }
                 Root(update) { update = null }
             }
         }
@@ -104,11 +112,18 @@ class MainActivity : FragmentActivity() {
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); handle(intent) }
 
     private fun handle(i: Intent?) {
+        if (i?.action == "com.iz.action.DRAFT") {
+            val t = i.getStringExtra("text").orEmpty()
+            Nav.home(); Nav.go(Route.Editor(draft = t, draftMood = i.getIntExtra("mood", 0), draftSource = i.getStringExtra("source").orEmpty()))
+            i.action = null; return
+        }
         when (i?.getStringExtra("open") ?: return) {
             "write" -> { Nav.home(); Nav.go(Route.Editor()) }
             "voice" -> { Nav.home(); Nav.go(Route.Editor(template = "_voice")) }
-            "memories" -> { Nav.home(); Nav.tab = 3; Nav.memTab = 4 }
-            "letters" -> { Nav.home(); Nav.tab = 3; Nav.memTab = 2 }
+            "memories" -> { Nav.home(); Nav.tab = 2; Nav.memTab = 4 }
+            "letters" -> { Nav.home(); Nav.tab = 2; Nav.memTab = 2 }
+            "year" -> { Nav.home(); Nav.go(Route.Year(LocalDate.now().year)) }
+            "weekly" -> { Nav.home(); Nav.go(Route.Weekly) }
             "home" -> { Nav.home(); Nav.tab = 0 }
         }
         i.removeExtra("open")
@@ -151,6 +166,13 @@ fun Root(update: Updater.Rel?, dismissUpdate: () -> Unit) {
                 is Route.Summary -> SummaryScreen(r)
                 Route.Map -> MapScreen()
                 Route.Trash -> TrashScreen()
+                Route.Entries -> Column(Modifier.fillMaxSize().background(Iz.c.bg)) { BackBar("Tüm girdiler", { Nav.back() }); Box(Modifier.weight(1f)) { ListScreen() } }
+                is Route.Person -> PersonScreen(r.name)
+                Route.Places -> PlacesScreen()
+                is Route.PlaceR -> PlaceScreen(r.name)
+                is Route.Year -> YearScreen(r.year)
+                Route.Weekly -> WeeklyScreen()
+                is Route.Versions -> VersionsScreen(r.id)
             }
         }
         update?.let { UpdateDialog(it, dismissUpdate) }
@@ -170,21 +192,21 @@ private data class TabItem(val label: String, val icon: ImageVector, val iconOn:
 fun Tabs() {
     val c = Iz.c
     val items = listOf(
-        TabItem("Ana Sayfa", Icons.Rounded.Home, Icons.Rounded.Home),
-        TabItem("Günlük", Icons.Rounded.EditNote, Icons.Rounded.EditNote),
+        TabItem("Bugün", Icons.Rounded.EditNote, Icons.Rounded.EditNote),
         TabItem("Takvim", Icons.Rounded.CalendarMonth, Icons.Rounded.CalendarMonth),
         TabItem("Anılar", Icons.Rounded.AutoAwesome, Icons.Rounded.AutoAwesome),
-        TabItem("İstatistik", Icons.Rounded.Insights, Icons.Rounded.Insights),
+        TabItem("İçgörü", Icons.Rounded.Insights, Icons.Rounded.Insights),
+        TabItem("Ben", Icons.Rounded.Person, Icons.Rounded.Person),
     )
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) {
             AnimatedContent(Nav.tab, transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(120)) }, label = "tab") { t ->
                 when (t) {
                     0 -> HomeScreen()
-                    1 -> ListScreen()
-                    2 -> CalendarScreen()
-                    3 -> MemoriesScreen()
-                    else -> StatsScreen()
+                    1 -> CalendarScreen()
+                    2 -> MemoriesScreen()
+                    3 -> InsightScreen()
+                    else -> MeScreen()
                 }
             }
         }

@@ -40,8 +40,7 @@ fun StatsScreen() {
     val ms = remember(Store.version, ym, Lock.hiddenOpen) { Insights.summary(month) }
     val total = remember(Store.version, Lock.hiddenOpen) { Insights.summary(all) }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().padding(horizontal = 20.dp)) {
-        Text("İstatistik", style = MaterialTheme.typography.headlineMedium, color = c.text, modifier = Modifier.padding(top = 18.dp, bottom = 8.dp))
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         if (all.isEmpty()) { EmptyState(Icons.Rounded.Insights, "Veriler yazdıkça birikir", "Birkaç gün yazdıktan sonra ruh hâlin, alışkanlıkların ve değişimin burada görünür."); return@Column }
 
         // Genel
@@ -123,7 +122,7 @@ fun StatsScreen() {
             SectionTitle("En çok kullanılan etiketler")
             @OptIn(ExperimentalLayoutApi::class)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                total.topTags.forEach { (t, n) -> Pill("#$t · $n") { Nav.listTag = t; Nav.tab = 1 } }
+                total.topTags.forEach { (t, n) -> Pill("#$t · $n") { Nav.listTag = t; Nav.go(Route.Entries) } }
             }
         }
 
@@ -264,7 +263,7 @@ fun SummaryScreen(r: Route.Summary) {
                     val mx = s.topWords.first().second.toFloat()
                     s.topWords.forEach { (w, n) ->
                         Text(w, color = c.accent.copy(alpha = 0.45f + 0.55f * n / mx), style = if (n / mx > 0.6f) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.clip(CircleShape).clickable { Nav.listQuery = w; Nav.home(); Nav.tab = 1 }.padding(horizontal = 6.dp, vertical = 2.dp))
+                            modifier = Modifier.clip(CircleShape).clickable { Nav.listQuery = w; Nav.go(Route.Entries) }.padding(horizontal = 6.dp, vertical = 2.dp))
                     }
                 }
             }

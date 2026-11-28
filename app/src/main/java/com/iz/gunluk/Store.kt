@@ -22,6 +22,9 @@ class App : Application() {
         Store.init(this)
         Reminders.createChannel(this)
         Reminders.schedule(this)
+        QuickMood.schedule(this)
+        Capsules.register(this)
+        kasa.sdk.KasaSdk.init(this, backup = { out -> Backup.writeZip(out) }, restore = { inp -> Backup.restoreZip(inp) })
     }
 }
 
@@ -120,6 +123,7 @@ object Store {
         if (d == decoy) return
         flush()
         decoy = d
+        Versions.reset()
         load()
         IzWidget.update(ctx)
     }
@@ -129,8 +133,15 @@ object Store {
 
     fun upsert(e: Entry) {
         val i = entries.indexOfFirst { it.id == e.id }
-        if (i >= 0) entries[i] = e else entries.add(e)
+        if (i >= 0) { Versions.record(entries[i], e); entries[i] = e } else entries.add(e)
         persist()
+    }
+
+    /** Toplu güncelleme (ör. Seyir ekran süresi): tek kayıt. */
+    fun mapAll(f: (Entry) -> Entry) {
+        var changed = false
+        for (i in entries.indices) { val n = f(entries[i]); if (n != entries[i]) { entries[i] = n; changed = true } }
+        if (changed) persist()
     }
 
     /** Silinen girdiler kalıcı silinmez; 30 gün çöp kutusunda bekler. */
@@ -236,7 +247,7 @@ object Trash {
 object Prefs {
     private lateinit var sp: SharedPreferences
 
-    var theme by mutableStateOf("dark")         // light, dark, amoled, paper, system
+    var theme by mutableStateOf("iz")         // light, dark, amoled, paper, system
     var accent by mutableIntStateOf(0)
     var font by mutableStateOf("sans")
     var fontScale by mutableStateOf(1f)
@@ -270,12 +281,19 @@ object Prefs {
     var hiddenBio by mutableStateOf(true)
     var lockAsked by mutableStateOf(false)
     var icon by mutableStateOf("IconNib")
+    // 2.0
+    var nightAuto by mutableStateOf(true)
+    var seyirLink by mutableStateOf(false)
+    var kadrajSong by mutableStateOf(true)
+    var moodNotif by mutableStateOf(true)
+    var moodHour by mutableIntStateOf(21)
+    var suggestPhotos by mutableStateOf(true)
 
     fun init(c: Context) {
         sp = c.getSharedPreferences("iz", Context.MODE_PRIVATE)
-        theme = sp.getString("theme", "dark")!!
+        theme = sp.getString("theme", "iz")!!
         accent = sp.getInt("accent", 0)
-        font = sp.getString("font", "sans")!!
+        font = sp.getString("font", "crimson")!!
         fontScale = sp.getFloat("fontScale", 1f)
         lineHeight = sp.getFloat("lineHeight", 1.5f)
         name = sp.getString("name", "")!!
@@ -306,7 +324,18 @@ object Prefs {
         hiddenBio = sp.getBoolean("hiddenBio", true)
         lockAsked = sp.getBoolean("lockAsked", false)
         icon = sp.getString("icon", "IconNib")!!
+        nightAuto = sp.getBoolean("nightAuto", true)
+        seyirLink = sp.getBoolean("seyirLink", false)
+        kadrajSong = sp.getBoolean("kadrajSong", true)
+        moodNotif = sp.getBoolean("moodNotif", true)
+        moodHour = sp.getInt("moodHour", 21)
+        suggestPhotos = sp.getBoolean("suggestPhotos", true)
         Moods.loadCustom(sp.getString("customMoods", "")!!)
+        if (!sp.getBoolean("v2", false)) {
+            // İz 2.0'a geçiş: yeni sıcak palet, Crimson Text yazı alanı
+            theme = "iz"; accent = 0; if (font == "sans") font = "crimson"
+            sp.edit().putBoolean("v2", true).apply(); save()
+        }
     }
 
     fun save() {
@@ -323,6 +352,8 @@ object Prefs {
             .putBoolean("showSaying", showSaying).putBoolean("showHoroscope", showHoroscope).putString("sign", sign)
             .putBoolean("showHabits", showHabits).putBoolean("hiddenBio", hiddenBio).putBoolean("lockAsked", lockAsked)
             .putString("icon", icon).putString("customMoods", Moods.customJson())
+            .putBoolean("nightAuto", nightAuto).putBoolean("seyirLink", seyirLink).putBoolean("kadrajSong", kadrajSong)
+            .putBoolean("moodNotif", moodNotif).putInt("moodHour", moodHour).putBoolean("suggestPhotos", suggestPhotos)
             .apply()
     }
 

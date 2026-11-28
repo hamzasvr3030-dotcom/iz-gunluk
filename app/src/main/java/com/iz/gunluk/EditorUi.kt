@@ -64,7 +64,8 @@ fun EditorScreen(r: Route.Editor) {
         r.id?.let { Store.get(it) } ?: Store.newEntry(r.day?.let { LocalDate.ofEpochDay(it) } ?: LocalDate.now()).let { e ->
             val t = r.template?.let { Templates[it] }
             when {
-                t != null -> e.copy(title = t.title, body = t.body, template = t.key, tags = listOf(t.tag))
+                r.draft != null -> e.copy(rota = if (r.draftSource == "rota") r.draft else "", body = if (r.draftSource == "rota") "" else r.draft, mood = Eco.moodFromScore(r.draftMood))
+                t != null -> e.copy(title = t.title, body = t.body, template = t.key, tags = listOf(t.tag), kind = Kinds.all.firstOrNull { it.template == t.key }?.key ?: "")
                 r.question != null -> e.copy(question = r.question)
                 else -> e
             }
@@ -86,6 +87,8 @@ fun EditorScreen(r: Route.Editor) {
     var recorder by remember { mutableStateOf<MediaKit.Recorder?>(null) }
     var recTick by remember { mutableLongStateOf(0L) }
     var locBusy by remember { mutableStateOf(false) }
+    var drawing by remember { mutableStateOf(false) }
+    var kindSheet by remember { mutableStateOf(false) }
     val bodyFocus = remember { FocusRequester() }
 
     fun update(f: (Entry) -> Entry) { e = f(e); saved = false }
@@ -152,7 +155,7 @@ fun EditorScreen(r: Route.Editor) {
     fun dictate(keepAudio: Boolean = false) {
         val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "tr-TR").putExtra(RecognizerIntent.EXTRA_PROMPT, if (keepAudio) "Konuş: hem ses notu hem yazı olacak" else "Konuş, ben yazayım")
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "tr-TR").putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true).putExtra(RecognizerIntent.EXTRA_PROMPT, if (keepAudio) "Konuş: hem ses notu hem yazı olacak" else "Konuş, ben yazayım")
         if (keepAudio) i.putExtra("android.speech.extra.GET_AUDIO_FORMAT", "audio/AMR").putExtra("android.speech.extra.GET_AUDIO", true)
         try { Lock.suppress = true; speech.launch(i) } catch (_: Exception) { Lock.suppress = false; Nav.toast = "Bu cihazda konuşma tanıma bulunamadı" }
     }
@@ -177,6 +180,12 @@ fun EditorScreen(r: Route.Editor) {
         if (r.template == "_voice") dictate()
         else if (r.id == null && !pickTemplate) { delay(250); runCatching { bodyFocus.requestFocus() } }
         if (r.id == null && Prefs.weatherAuto && MediaKit.hasLocation(ctx)) addLocation()
+        if (r.id == null && Prefs.kadrajSong && e.song.isBlank()) Eco.kadrajSong(ctx, e.day)?.let { s -> update { it.copy(song = s) } }
+    }
+    // Günlük türü seçilince ve sayfa boşsa türün şablonunu yerleştir
+    LaunchedEffect(e.kind) {
+        val k = Kinds[e.kind] ?: return@LaunchedEffect
+        if (body.text.isBlank()) Templates[k.template]?.let { t -> setBody(TextFieldValue(t.body, TextRange(t.body.length))); update { it.copy(title = it.title.ifBlank { t.title }, tags = (it.tags + t.tag).distinct()) } }
     }
     LaunchedEffect(recorder) { while (recorder != null) { recTick = System.currentTimeMillis() - recorder!!.started; delay(250) } }
 
@@ -264,6 +273,7 @@ fun EditorScreen(r: Route.Editor) {
                             if (!e.hidden && !Lock.canProtectHidden) Nav.toast = "Önce Ayarlar > Gizlilik'ten PIN oluştur"
                             else { update { it.copy(hidden = !it.hidden) }; if (!e.hidden) Lock.hiddenOpen = true }
                         }, leadingIcon = { Icon(Icons.Rounded.Lock, null) })
+                        if (r.id != null || Versions.count(e.id) > 0) DropdownMenuItem({ Text("Sürüm geçmişi · ${Versions.count(e.id)}") }, { menu = false; if (!saved) persist(); Nav.go(Route.Versions(e.id)) }, leadingIcon = { Icon(Icons.Rounded.History, null) })
                         DropdownMenuItem({ Text("Tarihi değiştir") }, { menu = false; datePick = true }, leadingIcon = { Icon(Icons.Rounded.Event, null) })
                         DropdownMenuItem({ Text("Saati değiştir") }, { menu = false; timePick = true }, leadingIcon = { Icon(Icons.Rounded.Schedule, null) })
                         DropdownMenuItem({ Text("Sil", color = c.danger) }, { menu = false; confirmDelete = true }, leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = c.danger) })
@@ -306,12 +316,16 @@ fun EditorScreen(r: Route.Editor) {
             if (!focus) {
                 Spacer(Modifier.height(12.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Kinds.of(e).let { k -> MetaChip(Icons.Rounded.Bookmark, k?.let { "${it.emoji} ${it.name}" } ?: "Tür: serbest", k?.color ?: c.sub) { kindSheet = true } }
                     MetaChip(mood?.icon ?: Icons.Rounded.Mood, (mood?.label ?: "Ruh hâli") + if (e.extraMoods.isNotEmpty()) " +${e.extraMoods.size}" else "", mood?.color ?: c.sub) { details = true }
                     MetaChip(Icons.Rounded.Bolt, if (e.energy > 0) "Enerji ${e.energy}/10" else "Enerji", if (e.energy > 0) Color(0xFFFFC53D) else c.sub) { details = true }
                     if (e.place.isNotBlank()) MetaChip(Icons.Rounded.Place, e.place, c.sub) { details = true }
                     if (e.weather.isNotBlank()) MetaChip(Icons.Rounded.WbSunny, e.weather, c.sub) { details = true }
                     e.allTags.forEach { t -> MetaChip(Icons.Rounded.Tag, t, c.accent) { details = true } }
                     if (e.hidden) MetaChip(Icons.Rounded.Lock, "Gizli", c.sub) { }
+                    if (e.song.isNotBlank()) MetaChip(Icons.Rounded.MusicNote, e.song, IzRose) { update { it.copy(song = "") } }
+                    if (e.rota.isNotBlank()) MetaChip(Icons.Rounded.TaskAlt, "Rota özeti", Color(0xFF4ADE80)) { details = true }
+                    if (e.fine.isNotEmpty()) MetaChip(Icons.Rounded.FavoriteBorder, e.fine.joinToString(", "), IzRose) { details = true }
                 }
             }
             Spacer(Modifier.height(14.dp))
@@ -341,6 +355,13 @@ fun EditorScreen(r: Route.Editor) {
                 Spacer(Modifier.height(12.dp))
                 MediaStrip(other, onRemove = { m -> update { it.copy(media = it.media - m) } })
             }
+            if (e.rota.isNotBlank() && !focus) {
+                Spacer(Modifier.height(12.dp))
+                IzCard(color = c.card2, pad = 14.dp) {
+                    Row(verticalAlignment = Alignment.CenterVertically) { Label("Rota'dan günün özeti", Color(0xFF4ADE80), Modifier.weight(1f)); Text("Kaldır", color = c.sub, style = MaterialTheme.typography.labelMedium, modifier = Modifier.clickable { update { it.copy(rota = "") } }) }
+                    Text(e.rota.removePrefix("Rota · ").trim(), color = c.text, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
             Spacer(Modifier.height(80.dp))
         }
 
@@ -356,6 +377,11 @@ fun EditorScreen(r: Route.Editor) {
             }
         }
 
+        // ----- öneriler: @kişi, #etiket, [[bağlantı -----
+        if (!focus) SuggestBar(body.text, body.selection.end) { s, en, w ->
+            val nt = body.text.substring(0, s) + w + body.text.substring(en)
+            setBody(TextFieldValue(nt, TextRange(s + w.length)))
+        }
         // ----- alt araç çubuğu -----
         if (!focus) {
             Row(Modifier.fillMaxWidth().background(c.card).navigationBarsPadding().padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -377,8 +403,16 @@ fun EditorScreen(r: Route.Editor) {
                         setBody(TextFieldValue(pre + ins + v.text.substring(at), TextRange(at + ins.length)))
                     }
                     Tool(Icons.Rounded.AlternateEmail, "Kişi") { insertAtCursor("@") }
+                    Tool(Icons.Rounded.Link, "Girdi bağlantısı") { insertAtCursor("[[") }
                     VerticalDivider(Modifier.height(24.dp).padding(horizontal = 4.dp), color = c.line)
                     Tool(Icons.Rounded.AddPhotoAlternate, "Metne fotoğraf") { Lock.suppress = true; inlinePhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+                    Tool(Icons.Rounded.Draw, "El yazısı / çizim") { drawing = true }
+                    Tool(Icons.Rounded.TaskAlt, "Rota'dan günün özeti") {
+                        scope.launch { val t = Eco.rotaToday(ctx); if (t == null) Nav.toast = if (Eco.installed(ctx, Eco.ROTA)) "Rota'dan özet alınamadı" else "Rota yüklü değil" else update { it.copy(rota = t) } }
+                    }
+                    Tool(Icons.Rounded.MusicNote, "Kadraj'dan günün şarkısı") {
+                        scope.launch { val s = Eco.kadrajSong(ctx, e.day); if (s == null) Nav.toast = if (Eco.installed(ctx, Eco.KADRAJ)) "Bugün Kadraj'da şarkı dinlenmemiş" else "Kadraj yüklü değil" else update { it.copy(song = s) } }
+                    }
                     Tool(Icons.Rounded.Image, "Fotoğraf") { Lock.suppress = true; photos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                     Tool(Icons.Rounded.Videocam, "Video") { Lock.suppress = true; video.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) }
                     Tool(Icons.Rounded.Mic, "Ses notu", if (recorder != null) c.danger else null) {
@@ -404,6 +438,20 @@ fun EditorScreen(r: Route.Editor) {
         DetailsSheet(e, onChange = { f -> update(f) }, onLocation = {
             if (MediaKit.hasLocation(ctx)) addLocation() else { locPerm.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION)) }
         }, locBusy = locBusy)
+    }
+    if (drawing) DrawDialog { m ->
+        drawing = false
+        if (m != null) { update { it.copy(media = it.media + m) }; insertAtCursor(RichText.photoToken(m.file), lineMode = true) }
+    }
+    if (kindSheet) ModalBottomSheet(onDismissRequest = { kindSheet = false }, containerColor = c.card) {
+        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
+            Text("Günlük türü", style = MaterialTheme.typography.titleLarge, color = c.text)
+            Text("Her türün kendi şablonu, rengi ve istatistiği var.", color = c.sub, style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(12.dp))
+            KindPicker(e.kind) { k -> update { it.copy(kind = k?.key ?: "") }; kindSheet = false }
+            Spacer(Modifier.height(16.dp))
+            Kinds.all.forEach { k -> val n = Store.visible().count { Kinds.of(it) == k }; if (n > 0) Text("${k.emoji} ${k.name}: $n girdi", color = c.sub, style = MaterialTheme.typography.bodyMedium) }
+        }
     }
     if (pickTemplate) ModalBottomSheet(onDismissRequest = { pickTemplate = false }, containerColor = c.card) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
@@ -476,8 +524,15 @@ fun DetailsSheet(e: Entry, onChange: ((Entry) -> Entry) -> Unit, onLocation: () 
         Spacer(Modifier.height(10.dp))
         Text("Birden fazla seçebilirsin; ilk seçtiğin ana ruh hâli olur.", color = c.sub, style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(8.dp))
-        MoodMultiPicker(e.moods, compact = true) { l -> onChange { it.copy(mood = l.firstOrNull(), extraMoods = l.drop(1)) } }
+        MoodMultiPicker(e.moods, compact = true) { l -> onChange { it.copy(mood = l.firstOrNull(), extraMoods = l.drop(1), fine = it.fine.filter { f -> Wheel.parentOf(f) in l }) } }
+        FineWheel(e.moods, e.fine) { f -> onChange { it.copy(fine = f) } }
         Spacer(Modifier.height(20.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Uyku", style = MaterialTheme.typography.titleMedium, color = c.text, modifier = Modifier.weight(1f))
+            Text(if (e.sleep <= 0) "Girilmedi" else "${"%.1f".format(e.sleep).replace('.', ',')} saat", color = c.sub)
+        }
+        Slider(value = e.sleep.toFloat(), onValueChange = { v -> onChange { it.copy(sleep = (v * 2).toInt() / 2.0) } }, valueRange = 0f..12f, steps = 23)
+        Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Enerji", style = MaterialTheme.typography.titleMedium, color = c.text, modifier = Modifier.weight(1f))
             Text(if (e.energy == 0) "Puanlanmadı" else "${e.energy}/10", color = c.sub)

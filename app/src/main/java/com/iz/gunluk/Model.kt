@@ -43,6 +43,19 @@ data class Entry(
     val question: String = "",
     /** Ana ruh hâline ek olarak seçilen diğer duygular. */
     val extraMoods: List<String> = emptyList(),
+    // ---- 2.0 ----
+    /** Günlük türü: "" (serbest), minnet, ruya, seyahat, okul. */
+    val kind: String = "",
+    /** Duygu çarkından seçilen ince duygular (ör. "gururlu"). */
+    val fine: List<String> = emptyList(),
+    /** Kadraj'dan günün şarkısı: "Başlık — Sanatçı". */
+    val song: String = "",
+    /** Seyir'den o günün ekran süresi (dakika); -1 = bilinmiyor. */
+    val screenMin: Int = -1,
+    /** Uyku süresi (saat); 0 = girilmedi. */
+    val sleep: Double = 0.0,
+    /** Rota'dan eklenen gün özeti (tamamlanan görevler/alışkanlıklar). */
+    val rota: String = "",
 ) {
     val moods: List<String> get() = listOfNotNull(mood) + extraMoods
     /** Metin içindeki @kişi etiketleri. */
@@ -63,6 +76,7 @@ data class Entry(
         .put("tags", JSONArray(tags)).put("media", JSONArray(media.map { it.json() }))
         .put("place", place).put("lat", lat ?: JSONObject.NULL).put("lon", lon ?: JSONObject.NULL)
         .put("weather", weather).put("fav", fav).put("hidden", hidden).put("template", template).put("question", question).put("extraMoods", JSONArray(extraMoods))
+        .put("kind", kind).put("fine", JSONArray(fine)).put("song", song).put("screenMin", screenMin).put("sleep", sleep).put("rota", rota)
 
     companion object {
         fun from(o: JSONObject): Entry {
@@ -78,6 +92,10 @@ data class Entry(
                 weather = o.optString("weather"), fav = o.optBoolean("fav"), hidden = o.optBoolean("hidden"),
                 template = o.optString("template"), question = o.optString("question"),
                 extraMoods = o.optJSONArray("extraMoods")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList(),
+                kind = o.optString("kind"),
+                fine = o.optJSONArray("fine")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList(),
+                song = o.optString("song"), screenMin = o.optInt("screenMin", -1), sleep = o.optDouble("sleep", 0.0).let { if (it.isNaN()) 0.0 else it },
+                rota = o.optString("rota"),
             )
         }
     }
@@ -91,14 +109,27 @@ data class Letter(
     val title: String,
     val body: String,
     val read: Boolean = false,
+    // ---- 2.0: konum tetikli zaman kapsülü ----
+    val lat: Double? = null,
+    val lon: Double? = null,
+    val radius: Int = 200,
+    val placeName: String = "",
+    /** Konuma varıldığında açıldı. */
+    val arrived: Boolean = false,
 ) {
-    fun isOpen(today: Long = LocalDate.now().toEpochDay()) = today >= openDay
+    val byPlace get() = lat != null && lon != null
+    /** Tarihli mektup tarihi gelince; yerli mektup tarihi geldiyse VE (konuma varıldıysa) açılır. */
+    fun isOpen(today: Long = LocalDate.now().toEpochDay()) = today >= openDay && (!byPlace || arrived)
     fun json(): JSONObject = JSONObject().put("id", id).put("written", written).put("openDay", openDay)
         .put("title", title).put("body", body).put("read", read)
+        .put("lat", lat ?: JSONObject.NULL).put("lon", lon ?: JSONObject.NULL).put("radius", radius).put("placeName", placeName).put("arrived", arrived)
 
     companion object {
         fun from(o: JSONObject) = Letter(o.getString("id"), o.optLong("written"), o.getLong("openDay"),
-            o.optString("title"), o.optString("body"), o.optBoolean("read"))
+            o.optString("title"), o.optString("body"), o.optBoolean("read"),
+            if (o.isNull("lat") || !o.has("lat")) null else o.getDouble("lat"),
+            if (o.isNull("lon") || !o.has("lon")) null else o.getDouble("lon"),
+            o.optInt("radius", 200), o.optString("placeName"), o.optBoolean("arrived"))
     }
 }
 

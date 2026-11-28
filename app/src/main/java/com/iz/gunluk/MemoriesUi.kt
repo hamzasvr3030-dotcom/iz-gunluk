@@ -44,6 +44,7 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import java.time.Instant
 import java.time.LocalDate
+import kotlinx.coroutines.launch
 import java.time.ZoneId
 import java.time.ZoneOffset
 
@@ -51,15 +52,17 @@ import java.time.ZoneOffset
 fun MemoriesScreen() {
     val c = Iz.c
     @Suppress("UNUSED_VARIABLE") val v = Store.version
-    val tabs = listOf("Favoriler", "Fotoğraflar", "Mektuplar", "Harita", "Geçmişte bugün", "Kişiler")
+    val tabs = listOf(6 to "Zaman tüneli", 4 to "Geçmişte bugün", 7 to "Yerler", 5 to "Kişiler", 0 to "Favoriler", 1 to "Fotoğraflar", 2 to "Mektuplar", 3 to "Harita")
     val vis = Store.visible()
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         Text("Anılar", style = MaterialTheme.typography.headlineMedium, color = c.text, modifier = Modifier.padding(start = 20.dp, top = 18.dp, bottom = 12.dp))
         LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            itemsIndexed(tabs) { i, t -> Pill(t, Nav.memTab == i) { if (i == 3) Nav.go(Route.Map) else Nav.memTab = i } }
+            items(tabs.size) { k -> val (i, t) = tabs[k]; Pill(t, Nav.memTab == i) { if (i == 3) Nav.go(Route.Map) else Nav.memTab = i } }
         }
         Spacer(Modifier.height(12.dp))
         when (Nav.memTab) {
+            6 -> Timeline()
+            7 -> PlacesList()
             0 -> {
                 val favs = vis.filter { it.fav }.sortedByDescending { it.day }
                 Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
@@ -90,7 +93,7 @@ fun MemoriesScreen() {
                     people.forEach { (name, es, _) ->
                         val last = es.maxBy { it.day }
                         val top = Insights.moodCounts(es).firstOrNull()?.first
-                        IzCard(onClick = { Nav.listPerson = name; Nav.tab = 1 }, pad = 14.dp) {
+                        IzCard(onClick = { Nav.go(Route.Person(name)) }, pad = 14.dp) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Box(Modifier.size(42.dp).clip(CircleShape).background(Color(0xFF36CFC9).copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
                                     Text(name.take(1).uppercase(java.util.Locale.forLanguageTag("tr")), color = Color(0xFF36CFC9), fontWeight = FontWeight.Bold)
@@ -190,12 +193,25 @@ fun LetterEditScreen(id: String?) {
     var body by remember { mutableStateOf(old?.body ?: "") }
     var openDay by remember { mutableLongStateOf(old?.openDay ?: LocalDate.now().plusYears(1).toEpochDay()) }
     var pick by remember { mutableStateOf(false) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    var place by remember { mutableStateOf(old?.let { o -> if (o.byPlace) Triple(o.lat!!, o.lon!!, o.placeName) else null }) }
+    var radius by remember { mutableIntStateOf(old?.radius ?: 200) }
+    var locBusy by remember { mutableStateOf(false) }
+    fun grabPlace() { locBusy = true; scope.launch(block = { val l = MediaKit.location(ctx); if (l == null) Nav.toast = "Konum alınamadı" else place = Triple(l.latitude, l.longitude, MediaKit.placeName(ctx, l.latitude, l.longitude).ifBlank { "Bu konum" }); locBusy = false }) }
+    val bgPerm = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { }
+    val locPerm = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()) { m ->
+        if (m.values.any { it }) { grabPlace(); if (android.os.Build.VERSION.SDK_INT >= 29 && !Capsules.canBackground(ctx)) { Nav.toast = "Arka planda konum izni: \"Her zaman izin ver\" seç"; bgPerm.launch(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION) } }
+        else Nav.toast = "Konum izni verilmedi"
+    }
     val presets = listOf("1 ay" to 1L, "6 ay" to 6L, "1 yıl" to 12L, "5 yıl" to 60L)
     Column(Modifier.fillMaxSize().background(c.bg).imePadding()) {
         BackBar("Geleceğe mektup", { Nav.back() }) {
             TextButton(enabled = body.isNotBlank(), onClick = {
-                Store.upsertLetter((old ?: Letter(openDay = openDay, title = "", body = "")).copy(title = title, body = body, openDay = openDay))
-                Nav.toast = "Mektup mühürlendi · ${Tr.long(LocalDate.ofEpochDay(openDay))}"
+                val nl = (old ?: Letter(openDay = openDay, title = "", body = "")).copy(title = title, body = body, openDay = openDay,
+                    lat = place?.first, lon = place?.second, placeName = place?.third.orEmpty(), radius = radius, arrived = if (place == null) false else (old?.arrived == true && old.lat == place?.first))
+                Store.upsertLetter(nl); Capsules.register(ctx)
+                Nav.toast = if (place != null) "Kapsül mühürlendi · ${place!!.third} konumuna varınca açılır" else "Mektup mühürlendi · ${Tr.long(LocalDate.ofEpochDay(openDay))}"
                 Nav.back()
             }) { Text("Mühürle", fontWeight = FontWeight.Bold) }
         }
@@ -207,7 +223,18 @@ fun LetterEditScreen(id: String?) {
                 Pill("Tarih seç", false, Icons.Rounded.Event) { pick = true }
             }
             Spacer(Modifier.height(8.dp))
-            Text("Açılış: ${Tr.longDay(LocalDate.ofEpochDay(openDay))}", color = c.accent, style = MaterialTheme.typography.bodyMedium)
+            Text(if (place != null) "En erken: ${Tr.longDay(LocalDate.ofEpochDay(openDay))} · ve oraya varınca" else "Açılış: ${Tr.longDay(LocalDate.ofEpochDay(openDay))}", color = c.accent, style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(12.dp))
+            Row(Modifier.fillMaxWidth().clip(RoundS).background(c.card).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.Place, null, tint = if (place != null) c.accent else c.sub); Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Konum tetikli zaman kapsülü", color = c.text, fontWeight = FontWeight.SemiBold)
+                    Text(place?.let { "${it.third} · $radius m içinde açılır" } ?: "Belirli bir yere gidince açılsın", color = c.sub, style = MaterialTheme.typography.bodyMedium)
+                }
+                if (place == null) TextButton(onClick = { if (MediaKit.hasLocation(ctx)) grabPlace() else locPerm.launch(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION)) }) { Text(if (locBusy) "…" else "Buraya") }
+                else TextButton(onClick = { place = null }) { Text("Kaldır") }
+            }
+            if (place != null) Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(100, 200, 500, 1000).forEach { r -> Pill("$r m", radius == r) { radius = r } } }
             Spacer(Modifier.height(18.dp))
             BasicTextField(title, { title = it }, singleLine = true, cursorBrush = SolidColor(c.accent),
                 textStyle = TextStyle(color = c.text, fontSize = 22.sp, fontWeight = FontWeight.Bold),
@@ -282,14 +309,22 @@ fun MapScreen() {
                     setTileSource(TileSourceFactory.MAPNIK)
                     setMultiTouchControls(true)
                     zoomController.setVisibility(org.osmdroid.views.CustomZoomButtonsController.Visibility.NEVER)
-                    for (e in pts) {
+                    val clusters = pts.groupBy { Math.round(it.lat!! * 300) to Math.round(it.lon!! * 300) }.values
+                    val maxN = clusters.maxOf { it.size }
+                    for (grp in clusters) {
+                        val e = grp.maxBy { it.day }
+                        val heat = grp.size / maxN.toFloat()
+                        // ısı: yoğun yerler daha büyük ve daha sıcak bir hale ile çizilir
+                        val halo = org.osmdroid.views.overlay.Polygon(this).apply {
+                            points = org.osmdroid.views.overlay.Polygon.pointsAsCircle(GeoPoint(e.lat!!, e.lon!!), 80.0 + 420.0 * heat)
+                            fillPaint.color = android.graphics.Color.argb((40 + 90 * heat).toInt(), 247, (149 - 60 * heat).toInt(), (95 + 67 * heat).toInt())
+                            outlinePaint.strokeWidth = 0f; outlinePaint.color = android.graphics.Color.TRANSPARENT
+                        }
+                        overlays.add(halo)
                         val mk = Marker(this)
                         mk.position = GeoPoint(e.lat!!, e.lon!!)
-                        mk.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                        mk.icon = GradientDrawable().apply {
-                            shape = GradientDrawable.OVAL; setSize(44, 44)
-                            setColor((Moods[e.mood]?.color ?: c.accent).toArgb()); setStroke(5, android.graphics.Color.WHITE)
-                        }
+                        mk.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                        mk.icon = android.graphics.drawable.BitmapDrawable(cx.resources, countBubble(grp.size, (Moods[e.mood]?.color ?: c.accent).toArgb()))
                         mk.setOnMarkerClickListener { _, _ -> sel = e; true }
                         overlays.add(mk)
                     }

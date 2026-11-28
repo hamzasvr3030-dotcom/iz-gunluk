@@ -39,6 +39,9 @@ object Habits {
     fun icon(k: String) = icons.firstOrNull { it.first == k }?.second ?: Icons.Rounded.Star
 
     fun value(day: Long, key: String) = log[day]?.get(key) ?: 0.0
+    /** Etken analizi için: o gün uyku saati (girildiyse) ve spor yapılıp yapılmadığı (o gün kayıt varsa). */
+    fun sleepOf(day: Long): Double? = log[day]?.get("uyku")?.takeIf { it > 0 }
+    fun sportOf(day: Long): Boolean? = log[day]?.let { m -> if (defs.none { it.key == "spor" }) null else (m["spor"] ?: 0.0) >= 1.0 }
 
     fun done(d: HabitDef, v: Double) = when (d.kind) { "check" -> v >= 1.0; else -> v >= d.target }
 

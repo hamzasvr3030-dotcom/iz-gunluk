@@ -31,8 +31,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 
-val Round = RoundedCornerShape(20.dp)
+/** Ortak köşe ölçeği: çip 8 · kart 14 · büyük kart 18 · alt sayfa 26. */
+val Round = RoundedCornerShape(18.dp)
 val RoundS = RoundedCornerShape(14.dp)
+val RoundChip = RoundedCornerShape(8.dp)
+val RoundSheet = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp)
 
 @Composable
 fun IzCard(modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, pad: Dp = 18.dp, color: Color = Iz.c.card, content: @Composable ColumnScope.() -> Unit) {

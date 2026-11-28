@@ -86,9 +86,11 @@ fun ReaderScreen(id: String) {
                     })
                 }
             }
+            if (Versions.count(e.id) > 0) IconButton(onClick = { Nav.go(Route.Versions(e.id)) }) { Icon(Icons.Rounded.History, "Sürüm geçmişi", tint = c.sub) }
             IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Rounded.DeleteOutline, "Sil", tint = c.sub) }
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
+            Kinds.of(e)?.let { k -> Text("${k.emoji} ${k.name} günlüğü", color = k.color, style = MaterialTheme.typography.labelLarge); Spacer(Modifier.height(4.dp)) }
             Label(Tr.longDay(e.date) + if (e.time.isNotEmpty()) " · ${e.time}" else "")
             Spacer(Modifier.height(8.dp))
             Text(Tr.ago(e.date), color = c.faint, style = MaterialTheme.typography.bodyMedium)
@@ -102,10 +104,13 @@ fun ReaderScreen(id: String) {
                 if (mood != null) MetaChip(mood.icon, mood.label, mood.color) { }
                 e.extraMoods.mapNotNull { Moods[it] }.forEach { m -> MetaChip(m.icon, m.label, m.color) { } }
                 if (e.energy > 0) MetaChip(Icons.Rounded.Bolt, "Enerji ${e.energy}/10", Color(0xFFFFC53D)) { }
+                if (e.sleep > 0) MetaChip(Icons.Rounded.Bedtime, "Uyku ${"%.1f".format(e.sleep).replace('.', ',')} sa", c.sub) { }
+                if (e.screenMin >= 0) MetaChip(Icons.Rounded.PhoneAndroid, "Ekran ${e.screenMin / 60} sa ${e.screenMin % 60} dk", c.sub) { }
+                if (e.place.isNotBlank()) MetaChip(Icons.Rounded.Storefront, "Yer sayfası", c.sub) { Nav.go(Route.PlaceR(e.place.substringBefore(',').trim())) }
                 if (e.place.isNotBlank()) MetaChip(Icons.Rounded.Place, e.place, c.sub) { if (e.lat != null) Nav.go(Route.Map) }
                 if (e.weather.isNotBlank()) MetaChip(Icons.Rounded.WbSunny, e.weather, c.sub) { }
-                e.allTags.forEach { t -> MetaChip(Icons.Rounded.Tag, t, c.accent) { Nav.listTag = t; Nav.home(); Nav.tab = 1 } }
-                e.people.forEach { pp -> MetaChip(Icons.Rounded.Person, pp, Color(0xFF36CFC9)) { Nav.listPerson = pp; Nav.home(); Nav.tab = 1 } }
+                e.allTags.forEach { t -> MetaChip(Icons.Rounded.Tag, t, c.accent) { Nav.listTag = t; Nav.go(Route.Entries) } }
+                e.people.forEach { pp -> MetaChip(Icons.Rounded.Person, pp, Color(0xFF36CFC9)) { Nav.go(Route.Person(pp)) } }
             }
             if (e.question.isNotBlank()) {
                 Spacer(Modifier.height(16.dp))
@@ -125,6 +130,7 @@ fun ReaderScreen(id: String) {
             }
             val rest = e.media.filter { it.file !in e.inlineFiles }
             if (rest.isNotEmpty()) { Spacer(Modifier.height(18.dp)); MediaStrip(rest) }
+            LinksSection(e)
             Spacer(Modifier.height(24.dp))
             Text("${e.words} kelime · ${e.plain.length} karakter", color = c.faint, style = MaterialTheme.typography.labelMedium)
             Spacer(Modifier.height(100.dp))

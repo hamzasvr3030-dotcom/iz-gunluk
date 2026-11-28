@@ -10,11 +10,19 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
 
     <queries>
         <intent><action android:name="android.speech.RecognitionService" /></intent>
         <intent><action android:name="android.speech.action.RECOGNIZE_SPEECH" /></intent>
         <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>
+        <package android:name="com.rota.app" />
+        <package android:name="com.seyir.ekran" />
+        <package android:name="com.perde.oynatici" />
+        <package android:name="com.kasa.merkez" />
     </queries>
 
     <application
@@ -31,7 +39,13 @@
             android:exported="true"
             android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize"
-            android:theme="@style/Theme.Iz" />
+            android:theme="@style/Theme.Iz">
+            <!-- Rota: gün sonu değerlendirmesi İz'e taslak olarak gelir -->
+            <intent-filter>
+                <action android:name="com.iz.action.DRAFT" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
 
         <!-- Seçilebilir uygulama simgeleri: ADLARI DEĞİŞTİRME (seçim sıfırlanır) -->
         <activity-alias android:name=".IconNib" android:targetActivity=".MainActivity" android:enabled="true" android:exported="true"
@@ -85,6 +99,11 @@
             </intent-filter>
         </receiver>
         <receiver android:name=".InstallReceiver" android:exported="false" />
+        <receiver android:name=".QuickMoodReceiver" android:exported="false" />
+        <receiver android:name=".CapsuleReceiver" android:exported="false" />
+        <provider android:name=".EcoProvider" android:authorities="com.iz.gunluk.eco" android:exported="true" />
+        <activity android:name="kasa.sdk.HealthActivity" android:exported="true" android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <provider android:name="kasa.sdk.KasaBridge" android:authorities="${applicationId}.kasa" android:exported="true" />
 
         <receiver android:name=".IzWidget" android:exported="true" android:label="İz · Bugün">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>

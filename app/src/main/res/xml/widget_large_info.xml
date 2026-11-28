@@ -9,4 +9,4 @@
     android:initialLayout="@layout/widget_large"
     android:previewLayout="@layout/widget_large"
     android:description="@string/widget_large_desc"
-    android:widgetCategory="home_screen" />
+    android:widgetCategory="home_screen|keyguard" />

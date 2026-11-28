@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalTime
@@ -40,9 +41,17 @@ fun HomeScreen() {
     val q = Questions.forDay(today.toEpochDay())
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().padding(horizontal = 20.dp)) {
-        // Kapak
+        TodayHeader()
+        if (Prefs.showQuestion) {
+            Spacer(Modifier.height(14.dp))
+            Column(Modifier.fillMaxWidth().clip(Round).background(Brush.linearGradient(listOf(c.accent.copy(alpha = 0.22f), IzRose.copy(alpha = 0.10f), c.card))).clickable { Nav.write(question = q) }.padding(18.dp)) {
+                Label("Günün sorusu")
+                Spacer(Modifier.height(6.dp))
+                Text(q, fontFamily = Crimson, fontSize = 22.sp, lineHeight = 28.sp, color = c.text)
+            }
+        }
         val cover = Covers.colors(Prefs.cover)
-        Box(Modifier.fillMaxWidth().padding(top = 14.dp).clip(Round).background(Brush.linearGradient(cover))) {
+        if (false) Box(Modifier.fillMaxWidth().padding(top = 14.dp).clip(Round).background(Brush.linearGradient(cover))) {
             Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.25f)))))
             Column(Modifier.fillMaxWidth().padding(20.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -69,8 +78,8 @@ fun HomeScreen() {
             }
         }
 
-        Spacer(Modifier.height(18.dp))
-        Text("Günün ruh hâli", style = MaterialTheme.typography.labelLarge, color = c.sub)
+        Spacer(Modifier.height(16.dp))
+        Text("Bugün nasılsın?", style = MaterialTheme.typography.labelLarge, color = c.sub)
         Spacer(Modifier.height(10.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             items(Moods.all) { m ->
@@ -87,7 +96,8 @@ fun HomeScreen() {
             }
         }
 
-        Spacer(Modifier.height(18.dp))
+        TodayPage()
+        Spacer(Modifier.height(14.dp))
         // Ana yazma kartı
         Column(
             Modifier.fillMaxWidth().clip(Round)
@@ -173,8 +183,8 @@ fun HomeScreen() {
         if (Prefs.showSaying) { Spacer(Modifier.height(12.dp)); SayingCard(Sayings.forDay(today.toEpochDay())) }
         if (Prefs.showHoroscope) { Spacer(Modifier.height(12.dp)); HoroscopeCard() }
 
-        // Günün sorusu
-        if (Prefs.showQuestion) {
+        // Günün sorusu (yukarıda)
+        if (false) {
             Spacer(Modifier.height(12.dp))
             IzCard(onClick = { Nav.write(question = q) }) {
                 Label("Günün sorusu")
@@ -206,7 +216,7 @@ fun HomeScreen() {
         // Son girdiler
         val recent = Store.visible().filter { it.day != today.toEpochDay() && !it.isEmpty }.sortedByDescending { it.day * 10000 + (it.time.replace(":", "").toIntOrNull() ?: 0) }.take(3)
         if (recent.isNotEmpty()) {
-            SectionTitle("Son yazdıkların", "Tümü") { Nav.tab = 1 }
+            SectionTitle("Son yazdıkların", "Tümü") { Nav.go(Route.Entries) }
             recent.forEach { e -> EntryCard(e) { Nav.go(Route.Reader(e.id)) }; Spacer(Modifier.height(10.dp)) }
         }
         Spacer(Modifier.height(24.dp))

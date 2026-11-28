@@ -250,6 +250,7 @@ object Tr {
     fun short(d: LocalDate) = "${d.dayOfMonth} ${monthsShort[d.monthValue - 1]}"
     fun monthYear(d: LocalDate) = "${months[d.monthValue - 1]} ${d.year}"
     fun upper(s: String) = s.uppercase(java.util.Locale.forLanguageTag("tr"))
+    fun weekday(d: LocalDate) = days[d.dayOfWeek.value - 1]
 
     fun ago(from: LocalDate, to: LocalDate = LocalDate.now()): String {
         val y = to.year - from.year

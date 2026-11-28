@@ -64,7 +64,7 @@ class IzWidgetLarge : AppWidgetProvider() {
                 v.setTextViewText(R.id.w_date, Tr.upper("${today.dayOfMonth} ${Tr.months[today.monthValue - 1]} · ${Tr.days[today.dayOfWeek.value - 1]}"))
                 val todays = Store.entries.filter { it.day == today.toEpochDay() }
                 val mood = todays.filter { it.mood != null }.maxByOrNull { it.time + it.created }?.mood
-                v.setTextViewText(R.id.w_title, Moods[mood]?.let { "Bugün ${it.label.lowercase()}" } ?: "Bugün nasıl geçti?")
+                v.setTextViewText(R.id.w_title, Moods[mood]?.let { "Bugün ${it.label.lowercase()}" } ?: "Bugün nasılsın?")
                 val st = Insights.streak(Store.writtenDays)
                 v.setTextViewText(R.id.w_sub, if (st > 0) "Seri: $st gün · bu hafta ${Insights.weekCount(Store.writtenDays)}/${Prefs.goal}" else "Ruh hâlini seç, birkaç satır yaz")
                 for (k in keys) {

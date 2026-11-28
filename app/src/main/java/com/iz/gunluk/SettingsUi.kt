@@ -121,7 +121,7 @@ fun SettingsScreen() {
                         Text("Tema", color = c.text)
                         Spacer(Modifier.height(8.dp))
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf("light" to "Açık", "paper" to "Kâğıt", "dark" to "Koyu", "amoled" to "Siyah", "system" to "Sistem").forEach { (k, t) -> Pill(t, Prefs.theme == k) { Prefs.theme = k; save() } }
+                            listOf("iz" to "İz · gece lambası", "paper" to "Kâğıt", "light" to "Açık", "dark" to "Koyu", "amoled" to "Siyah", "contrast" to "Yüksek kontrast", "system" to "Sistem").forEach { (k, t) -> Pill(t, Prefs.theme == k) { Prefs.theme = k; save() } }
                         }
                         Spacer(Modifier.height(16.dp))
                         Text("Günlük kapağı", color = c.text)
@@ -149,7 +149,7 @@ fun SettingsScreen() {
                         Text("Yazı tipi", color = c.text)
                         Spacer(Modifier.height(8.dp))
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf("sans" to "Modern", "serif" to "Klasik", "mono" to "Daktilo", "round" to "El yazısı").forEach { (k, t) -> Pill(t, Prefs.font == k) { Prefs.font = k; save() } }
+                            listOf("crimson" to "Crimson (defter)", "sans" to "Inter", "serif" to "Klasik", "mono" to "Daktilo", "round" to "El yazısı").forEach { (k, t) -> Pill(t, Prefs.font == k) { Prefs.font = k; save() } }
                         }
                         Spacer(Modifier.height(14.dp))
                         Text("Yazı boyutu · %${(Prefs.fontScale * 100).toInt()}", color = c.text)
@@ -216,6 +216,15 @@ fun SettingsScreen() {
                     SettingRow("Konum ve havayı otomatik ekle", "Yeni girdide (izin verildiyse)", Icons.Rounded.WbSunny, onClick = { Prefs.weatherAuto = !Prefs.weatherAuto; save() }) {
                         Switch(Prefs.weatherAuto, { Prefs.weatherAuto = it; save() })
                     }
+                    SettingRow("Gece yazma modu", "22:00'den sonra sıcak renk, düşük kontrast, geniş satır aralığı", Icons.Rounded.Bedtime, onClick = { Prefs.nightAuto = !Prefs.nightAuto; save() }) {
+                        Switch(Prefs.nightAuto, { Prefs.nightAuto = it; save() })
+                    }
+                    SettingRow("Günün fotoğrafları önerisi", "Akşam, o gün çektiklerinden seçip ekle", Icons.Rounded.PhotoLibrary, onClick = { Prefs.suggestPhotos = !Prefs.suggestPhotos; save() }) {
+                        Switch(Prefs.suggestPhotos, { Prefs.suggestPhotos = it; save() })
+                    }
+                    SettingRow("Kadraj'dan günün şarkısı", "Yeni girdiye o gün en çok dinlenen şarkı eklenir", Icons.Rounded.MusicNote, onClick = { Prefs.kadrajSong = !Prefs.kadrajSong; save() }) {
+                        Switch(Prefs.kadrajSong, { Prefs.kadrajSong = it; save() })
+                    }
                     SettingRow("Ruh hâllerim", if (Moods.custom.isEmpty()) "Kendi ruh hâlini ekle" else Moods.custom.joinToString(", ") { it.label }, Icons.Rounded.Mood, onClick = { moodSheet = true })
                 }
 
@@ -273,6 +282,10 @@ fun SettingsScreen() {
                                 Text(d, color = if (on) c.onAccent else c.sub, style = MaterialTheme.typography.labelMedium)
                             }
                         }
+                    }
+                    SettingRow("Bildirimden hızlı ruh hâli", if (Prefs.moodNotif) "%02d:30 · 5 emoji, uygulamayı açmadan".format(Prefs.moodHour) else "Kapalı", Icons.Rounded.EmojiEmotions,
+                        onClick = { Prefs.moodHour = listOf(19, 20, 21, 22).let { l -> l[(l.indexOf(Prefs.moodHour) + 1) % l.size] }; save(); QuickMood.schedule(ctx) }) {
+                        Switch(Prefs.moodNotif, { Prefs.moodNotif = it; save(); QuickMood.schedule(ctx); if (it && Build.VERSION.SDK_INT >= 33) notifPerm.launch(Manifest.permission.POST_NOTIFICATIONS) })
                     }
                     SettingRow("Geçmişte bugün bildirimi", "“Tam 1 yıl önce bugün…”", Icons.Rounded.History, onClick = { Prefs.memoryNotif = !Prefs.memoryNotif; save() }) {
                         Switch(Prefs.memoryNotif, { Prefs.memoryNotif = it; save() })
